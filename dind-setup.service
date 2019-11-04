@@ -1,0 +1,13 @@
+# Copied from openshift/origin
+# - https://github.com/openshift/origin/blob/release-3.11/images/dind/dind-setup.sh
+
+[Unit]
+Description=docker-in-docker setup
+Before=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /usr/local/bin/dind-setup.sh
+
+[Install]
+RequiredBy=docker.service
