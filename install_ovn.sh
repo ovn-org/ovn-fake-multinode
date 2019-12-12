@@ -21,7 +21,7 @@ cd /ovs;
 ./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
 --enable-ssl
 make -j8;
-#make install
+make install
 cd /ovn
 
 # build and install
