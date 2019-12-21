@@ -1,5 +1,8 @@
 #!/bin/bash
 
+#set -o xtrace
+set -o errexit
+
 RUNC_CMD="${RUNC_CMD:-sudo docker}"
 
 BASE_IMAGE="ovn/cinc"
@@ -316,6 +319,7 @@ create_fake_vm() {
     ip netns add \$name
     ovs-vsctl add-port br-int \$name -- set interface \$name type=internal
     ip link set \$name netns \$name
+    ip netns exec \$name ip link set lo up
     ip netns exec \$name ip link set \$name address \$mac
     ip netns exec \$name ip addr add \$ip/\$mask dev \$name
     ip netns exec \$name ip link set \$name up
@@ -330,13 +334,14 @@ EOF
     chmod 0755 /tmp/ovn-multinode/create_fake_vm.sh
     echo "Creating a fake VM in ovn-chassis-1 for logical port - sw0-port1"
     ${RUNC_CMD} exec ovn-chassis-1 bash /data/create_fake_vm.sh sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 sw0-port1
-    echo "Creating a fake VM in ovn-chassis-1 for logical port - sw1-port1"
+    echo "Creating a fake VM in ovn-chassis-2 for logical port - sw1-port1"
     ${RUNC_CMD} exec ovn-chassis-2 bash /data/create_fake_vm.sh sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 sw1-port1
 
     echo "Creating a fake VM in the host bridge br-ovn-ext"
     ip netns add ovnfake-ext
     ovs-vsctl add-port br-ovn-ext ovnfake-ext -- set interface ovnfake-ext type=internal
     ip link set ovnfake-ext netns ovnfake-ext
+    ip netns exec ovnfake-ext ip link set lo up
     ip netns exec ovnfake-ext ip link set ovnfake-ext address 30:54:00:00:00:50
     ip netns exec ovnfake-ext ip addr add 172.16.0.50/24 dev ovnfake-ext
     ip netns exec ovnfake-ext ip link set ovnfake-ext up
@@ -344,26 +349,36 @@ EOF
 }
 
 function build-images() {
-    echo "OVN_SRC_PATH = $OVN_SRC_PATH"
-    if [ "${OVN_SRC_PATH}" = "" ]; then
-        echo "Set the OVN_SRC_PATH var pointing to the location of ovn source code."
-        exit 1
+    if [ ! -d ./ovs ]; then
+	echo "OVN_SRC_PATH = $OVN_SRC_PATH"
+	if [ "${OVN_SRC_PATH}" = "" ]; then
+            echo "Set the OVN_SRC_PATH var pointing to the location of ovn source code."
+            exit 1
+	fi
+	rm -rf ./ovs
+	cp -rf $OVS_SRC_PATH ./ovs
+	DO_RM_OVS='yes'
     fi
 
-    echo "OVS_SRC_PATH = $OVS_SRC_PATH"
-    if [ "${OVS_SRC_PATH}" = "" ]; then
-        echo "Set the OVS_SRC_PATH var pointing to the location of ovs source code."
-        exit 1
+    if [ ! -d ./ovn ]; then
+	echo "OVS_SRC_PATH = $OVS_SRC_PATH"
+	if [ "${OVS_SRC_PATH}" = "" ]; then
+            echo "Set the OVS_SRC_PATH var pointing to the location of ovs source code."
+            exit 1
+	fi
+	rm -rf ovn
+	cp -rf $OVN_SRC_PATH ovn
+	DO_RM_OVN='yes'
     fi
 
-    rm -rf ovn
-    cp -rf $OVN_SRC_PATH ovn
-    rm -rf ovs
-    cp -rf $OVS_SRC_PATH ovs
+    # Copy dbus.service to a place where image build can see it
+    cp -v /usr/lib/systemd/system/dbus.service .
+    sed -i 's/OOMScoreAdjust=-900//' ./dbus.service
     ${RUNC_CMD} build -t ovn/cinc -f Dockerfile .
+
     ${RUNC_CMD} build -t ovn/ovn-multi-node  --build-arg OVS_SRC_PATH=ovs --build-arg OVN_SRC_PATH=ovn -f fedora/Dockerfile .
-    rm -rf ovn
-    rm -rf ovs
+    [ -n "$DO_RM_OVS" ] && rm -rf ovs ||:
+    [ -n "$DO_RM_OVN" ] && rm -rf ovn ||:
 }
 
 case "${1:-""}" in

@@ -46,8 +46,10 @@ RUN systemctl mask\
  systemd-udev-trigger.service\
  systemd-udevd.service\
  systemd-vconsole-setup.service
-RUN cp /usr/lib/systemd/system/dbus.service /etc/systemd/system/;\
- sed -i 's/OOMScoreAdjust=-900//' /etc/systemd/system/dbus.service
+
+## RUN cp /usr/lib/systemd/system/dbus.service /etc/systemd/system/;\
+## sed -i 's/OOMScoreAdjust=-900//' /etc/systemd/system/dbus.service
+COPY dbus.service /etc/systemd/system/
 
 # Remove non-english translations (by explicitly installing just the English
 # ones) for glibc to reduce image size by 100mb.  Also install various network

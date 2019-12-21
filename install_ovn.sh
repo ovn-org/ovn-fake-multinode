@@ -12,28 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -o xtrace
+set -o errexit
 
 # get ovs source always from master as its needed as dependency
-cd /ovs;
-
+cd /ovs
 # build and install
 ./boot.sh
 ./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
---enable-ssl
-make -j8;
+--enable-ssl --disable-libcapng
+make -j$(($(nproc) + 1)) V=0
 make install
-cd /ovn
 
+cd /ovn
 # build and install
 ./boot.sh
 ./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
 --enable-ssl --with-ovs-source=/ovs/ --with-ovs-build=/ovs/
-make -j8; make install
+make -j$(($(nproc) + 1)) V=0
+make install
 
 # remove unused packages to make the container light weight.
 for i in $(package-cleanup --leaves --all);
-    do dnf remove -y $i; dnf autoremove -y;
+    do dnf remove -y $i
 done
+dnf autoremove -y
 
-
-rm -rf /ovs; rm -rf /ovn
+rm -rf /ovs /ovn

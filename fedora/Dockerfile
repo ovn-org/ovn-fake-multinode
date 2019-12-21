@@ -5,9 +5,10 @@ ARG OVS_SRC_PATH
 ARG OVN_SRC_PATH
 
 #RUN dnf install @'Development Tools' -y
-RUN dnf -y update && dnf -y install automake make gcc autoconf openssl-devel \
+RUN dnf -y install automake make gcc autoconf openssl-devel \
   python3 libtool openssl iputils \
-  net-tools.x86_64 uuid.x86_64 iproute.x86_64 dnf-utils
+  net-tools.x86_64 uuid.x86_64 iproute.x86_64 dnf-utils \
+  file
 
 RUN pip3 install six
 
