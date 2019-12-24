@@ -3,7 +3,7 @@
 #set -o xtrace
 set -o errexit
 
-RUNC_CMD="${RUNC_CMD:-sudo docker}"
+RUNC_CMD="${RUNC_CMD:-sudo podman}"
 
 BASE_IMAGE="ovn/cinc"
 CENTRAL_IMAGE="ovn/ovn-multi-node"
@@ -87,7 +87,7 @@ function start-container() {
   local volumes run_cmd
   volumes=""
 
-  ${RUNC_CMD} run -dt ${volumes} -v "/tmp/ovn-multinode:/data" --privileged \
+  ${RUNC_CMD} run --network none -dt ${volumes} -v "/tmp/ovn-multinode:/data" --privileged \
                 --name="${name}" --hostname="${name}" "${image}" > /dev/null
 }
 
@@ -153,13 +153,13 @@ eth=$1
 ovn_remote=$2
 
 if [ "\$eth" = "" ]; then
-    eth=eth0
+    eth=eth1
 fi
 
 ovn_remote=$2
 
 if [ "\$ovn_remote" = "" ]; then
-    ovn_remote="tcp:172.17.0.2:6642"
+    ovn_remote="tcp:170.168.0.2:6642"
 fi
 
 ip=\`ip addr show \$eth | grep inet | grep -v inet6 | awk '{print \$2}' | cut -d'/' -f1\`
@@ -365,11 +365,13 @@ function set-ovn-remote() {
     ${RUNC_CMD} exec ${CENTRAL_NAME} ovs-vsctl set open . external_ids:ovn-remote=$ovn_remote
 
     for name in "${GW_NAMES[@]}"; do
-        ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh
+        echo "Setting remote for $name"
+        ${RUNC_CMD} exec ${name} ovs-vsctl set open . external_ids:ovn-remote=$ovn_remote
     done
 
     for name in "${CHASSIS_NAMES[@]}"; do
-        ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh
+        echo "Setting remote for $name"
+        ${RUNC_CMD} exec ${name} ovs-vsctl set open . external_ids:ovn-remote=$ovn_remote
     done
 }
 
@@ -483,6 +485,14 @@ case "${1:-""}" in
         build-images
         ;;
     set-ovn-remote)
+        for (( i=1; i<=CHASSIS_COUNT; i++ )); do
+            CHASSIS_NAMES+=( "${CHASSIS_PREFIX}${i}" )
+        done
+
+        for (( i=1; i<=GW_COUNT; i++ )); do
+            GW_NAMES+=( "${GW_PREFIX}${i}" )
+        done
+
         set-ovn-remote $2
         ;;
     esac

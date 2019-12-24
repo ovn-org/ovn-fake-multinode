@@ -14,6 +14,9 @@
 # limitations under the License.
 
 # Check for programs we'll need.
+
+RUNC_CMD="${RUNC_CMD:-sudo podman}"
+
 search_path () {
     save_IFS=$IFS
     IFS=:
@@ -112,7 +115,7 @@ add_port () {
         exit 1
     fi
 
-    if PID=`docker inspect -f '{{.State.Pid}}' "$CONTAINER"`; then :; else
+    if PID=`${RUNC_CMD} inspect -f '{{.State.Pid}}' "$CONTAINER"`; then :; else
         echo >&2 "$UTIL: Failed to get the PID of the container"
         exit 1
     fi
