@@ -15,7 +15,9 @@
 set -o xtrace
 set -o errexit
 
-build_from_src=$1
+build_from_src="no"
+ls ovn*.rpm > /dev/null || build_from_src="yes"
+
 if [ "$build_from_src" = "yes" ]; then
     # get ovs source always from master as its needed as dependency
     cd /ovs

@@ -374,6 +374,19 @@ function set-ovn-remote() {
 }
 
 function build-images() {
+    rpm_present="yes"
+    ls *.rpm > /dev/null || rpm_present="no"
+    if [ "$rpm_present" == "yes" ]; then
+        from_src=no
+        rm -rf ovn
+        rm -rf ovs
+        mkdir ovn
+        mkdir ovs
+    else
+        from_src="yes"
+        touch tst.rpm
+    fi
+
     if [ ! -d ./ovs ]; then
 	echo "OVN_SRC_PATH = $OVN_SRC_PATH"
 	if [ "${OVN_SRC_PATH}" = "" ]; then
@@ -401,16 +414,13 @@ function build-images() {
     sed -i 's/OOMScoreAdjust=-900//' ./dbus.service 2>/dev/null || :
     ${RUNC_CMD} build -t ovn/cinc -f Dockerfile .
 
-    ls *.rpm > /dev/null  2>&1
-    if [ "$?" == "0" ]; then
-        from_src=no
-    else
-        from_src=yes
-    fi
-
-    ${RUNC_CMD} build -t ovn/ovn-multi-node  --build-arg from_src=$from_src --build-arg OVS_SRC_PATH=ovs --build-arg OVN_SRC_PATH=ovn -f fedora/Dockerfile .
+    ${RUNC_CMD} build -t ovn/ovn-multi-node --build-arg OVS_SRC_PATH=ovs --build-arg OVN_SRC_PATH=ovn -f fedora/Dockerfile .
     [ -n "$DO_RM_OVS" ] && rm -rf ovs ||:
     [ -n "$DO_RM_OVN" ] && rm -rf ovn ||:
+
+    if [ "$rpm_present" == "no" ]; then
+        rm -f tst.rpm
+    fi
 }
 
 case "${1:-""}" in
@@ -469,6 +479,7 @@ case "${1:-""}" in
     stop)
         stop;;
     build)
+        echo "Building images"
         build-images
         ;;
     set-ovn-remote)

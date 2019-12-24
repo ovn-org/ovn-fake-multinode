@@ -16,7 +16,7 @@ COPY $OVN_SRC_PATH /ovn
 COPY *.rpm /
 COPY install_ovn.sh /install_ovn.sh
 
-RUN /install_ovn.sh $from_src
+RUN /install_ovn.sh
 RUN rm -f /*.rpm
 
 RUN dnf -y remove automake make gcc autoconf openssl-devel libtool
