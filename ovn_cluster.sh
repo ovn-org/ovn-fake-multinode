@@ -98,34 +98,38 @@ function stop() {
        ${RUNC_CMD} rm -f "${cid}" > /dev/null
     done
 
-    ip netns delete ovnfake-ext
-    ovs-vsctl del-port ovnfake-ext
+    ip netns delete ovnfake-ext || :
+    ovs-vsctl --if-exists del-br $OVN_BR || exit 1
+    ovs-vsctl --if-exists del-br $OVN_EXT_BR || exit 1
 }
 
 function setup-ovs-in-host() {
-    ovs-vsctl --if-exists del-br $OVN_BR || exit 1
-    ovs-vsctl --if-exists del-br $OVN_EXT_BR || exit 1
-    ovs-vsctl add-br $OVN_BR || exit 1
-    ovs-vsctl add-br $OVN_EXT_BR || exit 1
+    ovs-vsctl br-exists $OVN_BR || ovs-vsctl add-br $OVN_BR || exit 1
+    ovs-vsctl br-exists $OVN_BR || ovs-vsctl add-br $OVN_EXT_BR || exit 1
 }
 
 function add-ovs-docker-ports() {
-    ip_range="170.168.0"
-    local ip_start="100"
+    ip_range="170.168.0.0"
     cidr="24"
+    ip_start="170.168.0.2"
     br=br-ovn
     eth=eth1
 
-    ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip_range}.${ip_start}/${cidr}
+    ip_index=0
+    ip=$(./ip_gen.py $ip_range/$cidr $ip_start 0)
+
+    ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip}/${cidr}
 
     for name in "${GW_NAMES[@]}"; do
-        (( ip_start += 1 ))
-        ${OVS_DOCKER} add-port $br $eth ${name} --ipaddress=${ip_range}.${ip_start}/${cidr}
+        (( ip_index += 1))
+        ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
+        ${OVS_DOCKER} add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
     done
 
     for name in "${CHASSIS_NAMES[@]}"; do
-        (( ip_start += 1 ))
-        ${OVS_DOCKER} add-port $br $eth ${name} --ipaddress=${ip_range}.${ip_start}/${cidr}
+        (( ip_index += 1))
+        ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
+        ${OVS_DOCKER} add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
     done
 
     ${OVS_DOCKER} add-port br-ovn-ext eth2 ${CENTRAL_NAME}
@@ -348,6 +352,27 @@ EOF
     ip netns exec ovnfake-ext ip route add default via 172.16.0.1
 }
 
+function set-ovn-remote() {
+    ovn_remote=$1
+    echo "OVN remote = $1"
+    existing_chassis=$(count-chassis "${filter}")
+    if (( existing_chassis == 0)); then
+        echo
+        echo "ERROR: First start ovn-fake-multinode"
+        exit 1
+    fi
+
+    ${RUNC_CMD} exec ${CENTRAL_NAME} ovs-vsctl set open . external_ids:ovn-remote=$ovn_remote
+
+    for name in "${GW_NAMES[@]}"; do
+        ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh
+    done
+
+    for name in "${CHASSIS_NAMES[@]}"; do
+        ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh
+    done
+}
+
 function build-images() {
     if [ ! -d ./ovs ]; then
 	echo "OVN_SRC_PATH = $OVN_SRC_PATH"
@@ -445,6 +470,9 @@ case "${1:-""}" in
         stop;;
     build)
         build-images
+        ;;
+    set-ovn-remote)
+        set-ovn-remote $2
         ;;
     esac
 
