@@ -372,11 +372,18 @@ function build-images() {
     fi
 
     # Copy dbus.service to a place where image build can see it
-    cp -v /usr/lib/systemd/system/dbus.service .
-    sed -i 's/OOMScoreAdjust=-900//' ./dbus.service
+    cp -v /usr/lib/systemd/system/dbus.service . 2>/dev/null || touch dbus.service
+    sed -i 's/OOMScoreAdjust=-900//' ./dbus.service 2>/dev/null || :
     ${RUNC_CMD} build -t ovn/cinc -f Dockerfile .
 
-    ${RUNC_CMD} build -t ovn/ovn-multi-node  --build-arg OVS_SRC_PATH=ovs --build-arg OVN_SRC_PATH=ovn -f fedora/Dockerfile .
+    ls *.rpm > /dev/null  2>&1
+    if [ "$?" == "0" ]; then
+        from_src=no
+    else
+        from_src=yes
+    fi
+
+    ${RUNC_CMD} build -t ovn/ovn-multi-node  --build-arg from_src=$from_src --build-arg OVS_SRC_PATH=ovs --build-arg OVN_SRC_PATH=ovn -f fedora/Dockerfile .
     [ -n "$DO_RM_OVS" ] && rm -rf ovs ||:
     [ -n "$DO_RM_OVN" ] && rm -rf ovn ||:
 }

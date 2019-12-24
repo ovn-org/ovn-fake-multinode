@@ -15,23 +15,27 @@
 set -o xtrace
 set -o errexit
 
-# get ovs source always from master as its needed as dependency
-cd /ovs
-# build and install
-./boot.sh
-./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
---enable-ssl --disable-libcapng
-make -j$(($(nproc) + 1)) V=0
-make install
+build_from_src=$1
+if [ "$build_from_src" = "yes" ]; then
+    # get ovs source always from master as its needed as dependency
+    cd /ovs
+    # build and install
+    ./boot.sh
+    ./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
+    --enable-ssl --disable-libcapng
+    make -j$(($(nproc) + 1)) V=0
+    make install
 
-cd /ovn
-# build and install
-./boot.sh
-./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
---enable-ssl --with-ovs-source=/ovs/ --with-ovs-build=/ovs/
-make -j$(($(nproc) + 1)) V=0
-make install
-
+    cd /ovn
+    # build and install
+    ./boot.sh
+    ./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
+    --enable-ssl --with-ovs-source=/ovs/ --with-ovs-build=/ovs/
+    make -j$(($(nproc) + 1)) V=0
+    make install
+else
+    dnf install -y /*.rpm
+fi
 # remove unused packages to make the container light weight.
 for i in $(package-cleanup --leaves --all);
     do dnf remove -y $i

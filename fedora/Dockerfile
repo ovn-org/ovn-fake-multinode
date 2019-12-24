@@ -5,19 +5,19 @@ ARG OVS_SRC_PATH
 ARG OVN_SRC_PATH
 
 #RUN dnf install @'Development Tools' -y
-RUN dnf -y install automake make gcc autoconf openssl-devel \
+RUN dnf -y update && dnf -y install automake make gcc autoconf openssl-devel \
   python3 libtool openssl iputils \
-  net-tools.x86_64 uuid.x86_64 iproute.x86_64 dnf-utils \
-  file
+  net-tools.x86_64 uuid.x86_64 iproute.x86_64 dnf-utils libreswan
 
 RUN pip3 install six
 
 COPY $OVS_SRC_PATH /ovs
 COPY $OVN_SRC_PATH /ovn
-
+COPY *.rpm /
 COPY install_ovn.sh /install_ovn.sh
 
-RUN /install_ovn.sh
+RUN /install_ovn.sh $from_src
+RUN rm -f /*.rpm
 
 RUN dnf -y remove automake make gcc autoconf openssl-devel libtool
 
