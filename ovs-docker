@@ -254,7 +254,7 @@ EOF
 
 UTIL=$(basename $0)
 search_path ovs-vsctl
-search_path docker
+#search_path docker
 search_path uuidgen
 
 if (ip netns) > /dev/null 2>&1; then :; else
