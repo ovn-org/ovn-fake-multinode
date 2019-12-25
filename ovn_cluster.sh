@@ -11,7 +11,7 @@ CHASSIS_IMAGE="ovn/ovn-multi-node"
 GW_IMAGE="ovn/ovn-multi-node"
 
 CENTRAL_NAME="ovn-central"
-CHASSIS_PREFIX="ovn-chassis-"
+CHASSIS_PREFIX="${CHASSIS_PREFIX:-ovn-chassis-}"
 GW_PREFIX="ovn-gw-"
 
 CHASSIS_COUNT=${CHASSIS_COUNT:-2}
@@ -30,7 +30,7 @@ OVS_SRC_PATH="${OVS_SRC_PATH:-}"
 
 OVNCTL_PATH=/usr/share/ovn/scripts/ovn-ctl
 
-IP_HOST=${IP_RANGE:-170.168.0.0}
+IP_HOST=${IP_HOST:-170.168.0.0}
 IP_CIDR=${IP_CIDR:-16}
 IP_START=${IP_START:-170.168.0.2}
 
@@ -123,7 +123,6 @@ function add-ovs-docker-ports() {
 
     ip_index=0
     ip=$(./ip_gen.py $ip_range/$cidr $ip_start 0)
-
     if [ "$ovn_central" == "yes" ]; then
         ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip}/${cidr}
 
@@ -349,10 +348,10 @@ create_fake_vm \$@
 EOF
 
     chmod 0755 /tmp/ovn-multinode/create_fake_vm.sh
-    echo "Creating a fake VM in ovn-chassis-1 for logical port - sw0-port1"
-    ${RUNC_CMD} exec ovn-chassis-1 bash /data/create_fake_vm.sh sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 sw0-port1
-    echo "Creating a fake VM in ovn-chassis-2 for logical port - sw1-port1"
-    ${RUNC_CMD} exec ovn-chassis-2 bash /data/create_fake_vm.sh sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 sw1-port1
+    echo "Creating a fake VM in "${CHASSIS_NAMES[0]}" for logical port - sw0-port1"
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 sw0-port1
+    echo "Creating a fake VM in "${CHASSIS_NAMES[0]}" for logical port - sw1-port1"
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 sw1-port1
 
     echo "Creating a fake VM in the host bridge br-ovn-ext"
     ip netns add ovnfake-ext
