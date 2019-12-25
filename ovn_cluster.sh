@@ -3,7 +3,7 @@
 #set -o xtrace
 set -o errexit
 
-RUNC_CMD="${RUNC_CMD:-sudo podman}"
+RUNC_CMD="${RUNC_CMD:-sudo docker}"
 
 BASE_IMAGE="ovn/cinc"
 CENTRAL_IMAGE="ovn/ovn-multi-node"

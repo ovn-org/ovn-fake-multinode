@@ -85,4 +85,5 @@ VOLUME ["/var/lib/docker"]
 # to ensure cgroups are mounted with read-write permissions.
 RUN ln /usr/sbin/init /usr/sbin/dind_init
 
-CMD ["/usr/sbin/dind_init"]
+COPY dind_wrapper_init /usr/sbin/dind_wrapper_init
+CMD ["/usr/sbin/dind_wrapper_init"]

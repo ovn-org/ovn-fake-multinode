@@ -15,7 +15,7 @@
 
 # Check for programs we'll need.
 
-RUNC_CMD="${RUNC_CMD:-sudo podman}"
+RUNC_CMD="${RUNC_CMD:-sudo docker}"
 
 search_path () {
     save_IFS=$IFS
