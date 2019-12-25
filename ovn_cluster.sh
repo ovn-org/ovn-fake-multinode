@@ -125,7 +125,7 @@ function add-ovs-docker-ports() {
     ip=$(./ip_gen.py $ip_range/$cidr $ip_start 0)
     if [ "$ovn_central" == "yes" ]; then
         ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip}/${cidr}
-
+        echo "$ip" > _ovn_remote
         for name in "${GW_NAMES[@]}"; do
             (( ip_index += 1))
             ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
@@ -240,6 +240,12 @@ function start() {
     echo "Adding ovs-ports"
     # Add ovs ports to each of the nodes.
     add-ovs-docker-ports $ovn_central
+
+    if [ "$ovn_remote" == "" ]; then
+        if [ -e _ovn_remote ]; then
+            ovn_remote="tcp:$(cat _ovn_remote):6642"
+        fi
+    fi
 
     # Start OVN db servers on central node
     if [ "$ovn_central" == "yes" ]; then
