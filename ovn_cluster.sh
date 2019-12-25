@@ -179,6 +179,8 @@ ip=\`ip addr show \$eth | grep inet | grep -v inet6 | awk '{print \$2}' | cut -d
 ovs-vsctl set open . external_ids:ovn-encap-ip=\$ip
 ovs-vsctl set open . external-ids:ovn-encap-type=geneve
 ovs-vsctl set open . external-ids:ovn-remote=\$ovn_remote
+ovs-vsctl set open . external-ids:ovn-openflow-probe-interval=60
+ovs-vsctl set open . external-ids:ovn-remote-probe-interval=180000
 
 ovs-vsctl --if-exists del-br br-ex
 ovs-vsctl add-br br-ex
@@ -253,6 +255,7 @@ function start() {
         sleep 2
         ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-nbctl set-connection ptcp:6641
         ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-sbctl set-connection ptcp:6642
+        ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-sbctl set connection . inactivity_probe=180000
 
         # Start openvswitch and ovn-controller on each node
         ${RUNC_CMD} exec ${CENTRAL_NAME} /usr/share/openvswitch/scripts/ovs-ctl start --system-id=${CENTRAL_NAME}
