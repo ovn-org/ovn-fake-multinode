@@ -14,7 +14,7 @@ CENTRAL_NAME="ovn-central"
 CHASSIS_PREFIX="ovn-chassis-"
 GW_PREFIX="ovn-gw-"
 
-CHASSIS_COUNT=2
+CHASSIS_COUNT=${CHASSIS_COUNT:-2}
 CHASSIS_NAMES=()
 
 GW_COUNT=1
@@ -29,6 +29,10 @@ OVN_SRC_PATH="${OVN_SRC_PATH:-}"
 OVS_SRC_PATH="${OVS_SRC_PATH:-}"
 
 OVNCTL_PATH=/usr/share/ovn/scripts/ovn-ctl
+
+IP_HOST=${IP_RANGE:-170.168.0.0}
+IP_CIDR=${IP_CIDR:-16}
+IP_START=${IP_START:-170.168.0.2}
 
 function check-selinux() {
   if [[ "$(getenforce)" = "Enforcing" ]]; then
@@ -110,9 +114,10 @@ function setup-ovs-in-host() {
 
 function add-ovs-docker-ports() {
     ovn_central=$1
-    ip_range="170.168.0.0"
-    cidr="24"
-    ip_start="170.168.0.2"
+    ip_range=$IP_HOST
+    cidr=$IP_CIDR
+    ip_start=$IP_START
+
     br=br-ovn
     eth=eth1
 
