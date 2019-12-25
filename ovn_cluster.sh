@@ -109,6 +109,7 @@ function setup-ovs-in-host() {
 }
 
 function add-ovs-docker-ports() {
+    ovn_central=$1
     ip_range="170.168.0.0"
     cidr="24"
     ip_start="170.168.0.2"
@@ -118,13 +119,15 @@ function add-ovs-docker-ports() {
     ip_index=0
     ip=$(./ip_gen.py $ip_range/$cidr $ip_start 0)
 
-    ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip}/${cidr}
+    if [ "$ovn_central" == "yes" ]; then
+        ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip}/${cidr}
 
-    for name in "${GW_NAMES[@]}"; do
-        (( ip_index += 1))
-        ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-        ${OVS_DOCKER} add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
-    done
+        for name in "${GW_NAMES[@]}"; do
+            (( ip_index += 1))
+            ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
+            ${OVS_DOCKER} add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
+        done
+    fi
 
     for name in "${CHASSIS_NAMES[@]}"; do
         (( ip_index += 1))
@@ -132,11 +135,13 @@ function add-ovs-docker-ports() {
         ${OVS_DOCKER} add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
     done
 
-    ${OVS_DOCKER} add-port br-ovn-ext eth2 ${CENTRAL_NAME}
+    if [ "$ovn_central" == "yes" ]; then
+        ${OVS_DOCKER} add-port br-ovn-ext eth2 ${CENTRAL_NAME}
 
-    for name in "${GW_NAMES[@]}"; do
-        ${OVS_DOCKER} add-port br-ovn-ext eth2 ${name}
-    done
+        for name in "${GW_NAMES[@]}"; do
+            ${OVS_DOCKER} add-port br-ovn-ext eth2 ${name}
+        done
+    fi
 
     for name in "${CHASSIS_NAMES[@]}"; do
         ${OVS_DOCKER} add-port br-ovn-ext eth2 ${name}
@@ -144,19 +149,22 @@ function add-ovs-docker-ports() {
 }
 
 function configure-ovn() {
+    ovn_central=$1
+    ovn_remote=$2
+
     rm -f /tmp/ovn-multinode/configure_ovn.sh
 
     cat << EOF > /tmp/ovn-multinode/configure_ovn.sh
 #!/bin/bash
 
-eth=$1
-ovn_remote=$2
+eth=\$1
+ovn_remote=\$2
 
 if [ "\$eth" = "" ]; then
     eth=eth1
 fi
 
-ovn_remote=$2
+ovn_remote=\$2
 
 if [ "\$ovn_remote" = "" ]; then
     ovn_remote="tcp:170.168.0.2:6642"
@@ -179,19 +187,26 @@ EOF
 
     chmod 0755 /tmp/ovn-multinode/configure_ovn.sh
 
-    ${RUNC_CMD} exec ${CENTRAL_NAME} bash /data/configure_ovn.sh
+    if [ "$ovn_central" == "yes" ]; then
+        ${RUNC_CMD} exec ${CENTRAL_NAME} bash /data/configure_ovn.sh eth1 $ovn_remote
 
-    for name in "${GW_NAMES[@]}"; do
-        ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh
-    done
-
+        for name in "${GW_NAMES[@]}"; do
+            ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 $ovn_remote
+        done
+    fi
     for name in "${CHASSIS_NAMES[@]}"; do
-        ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh
-    done 
+        ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 $ovn_remote
+    done
 }
 
 function start() {
     echo "Starting OVN cluster"
+    ovn_central=$1
+    ovn_remote=$2
+
+    if [ "x$ovn_central" == "x" ]; then
+        ovn_central="yes"
+    fi
 
     # Check that no ovn related containers are running.
     check-no-containers "start"
@@ -201,24 +216,15 @@ function start() {
 
     setup-ovs-in-host
 
-    # Ensuring compatible host configuration
-    #
-    # Running in a container ensures that the docker host will be affected even
-    # if docker is running remotely.  The openshift/dind-node image was chosen
-    # due to its having sysctl installed.
-    ${RUNC_CMD} run --privileged --net=host --rm -v /lib/modules:/lib/modules \
-                ${CENTRAL_IMAGE} bash -e -c \
-                '/usr/sbin/modprobe openvswitch;
-                /usr/sbin/modprobe overlay 2> /dev/null || true;'
-
     mkdir -p /tmp/ovn-multinode
 
-    
     # Create containers
-    start-container "${CENTRAL_IMAGE}" "${CENTRAL_NAME}"
-    for name in "${GW_NAMES[@]}"; do
-        start-container "${GW_IMAGE}" "${name}"
-    done
+    if [ "$ovn_central" == "yes" ]; then
+        start-container "${CENTRAL_IMAGE}" "${CENTRAL_NAME}"
+        for name in "${GW_NAMES[@]}"; do
+            start-container "${GW_IMAGE}" "${name}"
+        done
+    fi
 
     for name in "${CHASSIS_NAMES[@]}"; do
         start-container "${CHASSIS_IMAGE}" "${name}"
@@ -229,29 +235,31 @@ function start() {
 
     echo "Adding ovs-ports"
     # Add ovs ports to each of the nodes.
-    add-ovs-docker-ports
+    add-ovs-docker-ports $ovn_central
 
     # Start OVN db servers on central node
-    ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} start_northd
-    sleep 2
-    ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-nbctl set-connection ptcp:6641
-    ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-sbctl set-connection ptcp:6642
+    if [ "$ovn_central" == "yes" ]; then
+        ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} start_northd
+        sleep 2
+        ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-nbctl set-connection ptcp:6641
+        ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-sbctl set-connection ptcp:6642
 
-    # Start openvswitch and ovn-controller on each node
-    ${RUNC_CMD} exec ${CENTRAL_NAME} /usr/share/openvswitch/scripts/ovs-ctl start --system-id=${CENTRAL_NAME}
-    ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} start_controller
+        # Start openvswitch and ovn-controller on each node
+        ${RUNC_CMD} exec ${CENTRAL_NAME} /usr/share/openvswitch/scripts/ovs-ctl start --system-id=${CENTRAL_NAME}
+        ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} start_controller
 
-    for name in "${GW_NAMES[@]}"; do
-        ${RUNC_CMD} exec ${name} /usr/share/openvswitch/scripts/ovs-ctl start --system-id=${name}
-        ${RUNC_CMD} exec ${name} ${OVNCTL_PATH} start_controller
-    done
+        for name in "${GW_NAMES[@]}"; do
+            ${RUNC_CMD} exec ${name} /usr/share/openvswitch/scripts/ovs-ctl start --system-id=${name}
+            ${RUNC_CMD} exec ${name} ${OVNCTL_PATH} start_controller
+        done
+    fi
 
     for name in "${CHASSIS_NAMES[@]}"; do
         ${RUNC_CMD} exec ${name} /usr/share/openvswitch/scripts/ovs-ctl start --system-id=${name}
         ${RUNC_CMD} exec ${name} ${OVNCTL_PATH} start_controller
     done
 
-    configure-ovn
+    configure-ovn $ovn_central $ovn_remote
 }
 
 function create_fake_vms() {
@@ -375,6 +383,13 @@ function set-ovn-remote() {
     done
 }
 
+# This function only starts chassis containers (running ovn-controller)
+function start-chassis() {
+    ovn_central=no
+    ovn_remote=$1
+    start $ovn_central $ovn_remote
+}
+
 function build-images() {
     rpm_present="yes"
     ls *.rpm > /dev/null || rpm_present="no"
@@ -477,6 +492,12 @@ case "${1:-""}" in
 
         start
         create_fake_vms
+        ;;
+    start-chassis)
+        for (( i=1; i<=CHASSIS_COUNT; i++ )); do
+            CHASSIS_NAMES+=( "${CHASSIS_PREFIX}${i}" )
+        done
+        start-chassis $2
         ;;
     stop)
         stop;;
