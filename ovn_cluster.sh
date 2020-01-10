@@ -91,7 +91,7 @@ function start-container() {
   local volumes run_cmd
   volumes=""
 
-  ${RUNC_CMD} run --network none -dt ${volumes} -v "/tmp/ovn-multinode:/data" --privileged \
+  ${RUNC_CMD} run  -dt ${volumes} -v "/tmp/ovn-multinode:/data" --privileged \
                 --name="${name}" --hostname="${name}" "${image}" > /dev/null
 }
 
