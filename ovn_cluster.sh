@@ -282,6 +282,10 @@ function create_fake_vms() {
 ovn-nbctl ls-add sw0
 ovn-nbctl lsp-add sw0 sw0-port1
 ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3"
+ovn-nbctl lsp-add sw0 sw0-port2
+ovn-nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4"
+ovn-nbctl lsp-add sw0 sw0-port3
+ovn-nbctl lsp-set-addresses sw0-port3 "50:54:00:00:00:05 10.0.0.5"
 
 # Create the second logical switch with one port
 ovn-nbctl ls-add sw1
@@ -359,8 +363,8 @@ EOF
     chmod 0755 /tmp/ovn-multinode/create_fake_vm.sh
     echo "Creating a fake VM in "${CHASSIS_NAMES[0]}" for logical port - sw0-port1"
     ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 sw0-port1
-    echo "Creating a fake VM in "${CHASSIS_NAMES[0]}" for logical port - sw1-port1"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 sw1-port1
+    echo "Creating a fake VM in "${CHASSIS_NAMES[1]}" for logical port - sw1-port1"
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[1]}" bash /data/create_fake_vm.sh sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 sw1-port1
 
     echo "Creating a fake VM in the host bridge br-ovn-ext"
     ip netns add ovnfake-ext
@@ -453,6 +457,26 @@ function build-images() {
     fi
 }
 
+function run-command() {
+    cmd=$@
+
+    ${RUNC_CMD} ps | grep $CENTRAL_NAME
+    if [ "$?" == "0" ]; then
+        echo "Running command $cmd in container $CENTRAL_NAME"
+        ${RUNC_CMD} exec $CENTRAL_NAME $cmd ||:
+    fi
+
+    for name in "${GW_NAMES[@]}"; do
+        echo "Running command $cmd in container $name"
+        ${RUNC_CMD} exec $CENTRAL_NAME $cmd ||:
+    done
+
+    for name in "${CHASSIS_NAMES[@]}"; do
+        echo "Running command $cmd in container $name"
+        ${RUNC_CMD} exec $CENTRAL_NAME $cmd ||:
+    done
+}
+
 case "${1:-""}" in
     start)
         while getopts ":abc:in:rsN:lm:" opt; do
@@ -529,6 +553,17 @@ case "${1:-""}" in
 
         set-ovn-remote $2
         ;;
+    run-command)
+        for (( i=1; i<=CHASSIS_COUNT; i++ )); do
+            CHASSIS_NAMES+=( "${CHASSIS_PREFIX}${i}" )
+        done
+
+        for (( i=1; i<=GW_COUNT; i++ )); do
+            GW_NAMES+=( "${GW_PREFIX}${i}" )
+        done
+
+        shift;
+        run-command $@
     esac
 
 exit 0
