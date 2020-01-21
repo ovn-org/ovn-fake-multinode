@@ -8,7 +8,7 @@ Vagrant.require_version ">=1.7.0"
 
 $bootstrap_centos = <<SCRIPT
 #dnf -y update ||:  ; # save your time. "vagrant box update" is your friend
-dnf -y install git time
+dnf -y install git time python3
 SCRIPT
 
 $build_images = <<SCRIPT
