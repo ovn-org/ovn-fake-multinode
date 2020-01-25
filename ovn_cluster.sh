@@ -10,6 +10,8 @@ CENTRAL_IMAGE="ovn/ovn-multi-node"
 CHASSIS_IMAGE="ovn/ovn-multi-node"
 GW_IMAGE="ovn/ovn-multi-node"
 
+USE_OVN_RPMS="${USE_OVN_RPMS:-no}"
+
 CENTRAL_NAME="ovn-central"
 CHASSIS_PREFIX="${CHASSIS_PREFIX:-ovn-chassis-}"
 GW_PREFIX="ovn-gw-"
@@ -408,53 +410,56 @@ function start-chassis() {
 }
 
 function build-images() {
-    rpm_present="yes"
-    ls *.rpm > /dev/null || rpm_present="no"
-    if [ "$rpm_present" == "yes" ]; then
-        from_src=no
-        rm -rf ovn
-        rm -rf ovs
-        mkdir ovn
-        mkdir ovs
-    else
-        from_src="yes"
-        touch tst.rpm
-    fi
-
-    if [ ! -d ./ovs ]; then
-	echo "OVN_SRC_PATH = $OVN_SRC_PATH"
-	if [ "${OVN_SRC_PATH}" = "" ]; then
-            echo "Set the OVN_SRC_PATH var pointing to the location of ovn source code."
-            exit 1
-	fi
-	rm -rf ./ovs
-	cp -rf $OVS_SRC_PATH ./ovs
-	DO_RM_OVS='yes'
-    fi
-
-    if [ ! -d ./ovn ]; then
-	echo "OVS_SRC_PATH = $OVS_SRC_PATH"
-	if [ "${OVS_SRC_PATH}" = "" ]; then
-            echo "Set the OVS_SRC_PATH var pointing to the location of ovs source code."
-            exit 1
-	fi
-	rm -rf ovn
-	cp -rf $OVN_SRC_PATH ovn
-	DO_RM_OVN='yes'
-    fi
-
     # Copy dbus.service to a place where image build can see it
     cp -v /usr/lib/systemd/system/dbus.service . 2>/dev/null || touch dbus.service
     sed -i 's/OOMScoreAdjust=-900//' ./dbus.service 2>/dev/null || :
-    ${RUNC_CMD} build -t ovn/cinc -f Dockerfile .
+    ${RUNC_CMD} build -t ovn/cinc -f fedora/cinc/Dockerfile .
 
-    ${RUNC_CMD} build -t ovn/ovn-multi-node --build-arg OVS_SRC_PATH=ovs --build-arg OVN_SRC_PATH=ovn -f fedora/Dockerfile .
+    ${RUNC_CMD} build -t ovn/ovn-multi-node --build-arg OVS_SRC_PATH=ovs \
+    --build-arg OVN_SRC_PATH=ovn --build-arg USE_OVN_RPMS=$USE_OVN_RPMS -f  fedora/ovn/Dockerfile .
+}
+
+function check-for-ovn-rpms() {
+    USE_OVN_RPMS=yes
+    ls ovn*.rpm || USE_OVN_RPMS=no
+}
+
+function build-images-with-ovn-rpms() {
+    mkdir -p ovs
+    mkdir -p ovn
+    rm -f tst.rpm
+    build-images
+}
+
+function build-images-with-ovn-sources() {
+    if [ ! -d ./ovs ]; then
+	    echo "OVS_SRC_PATH = $OVS_SRC_PATH"
+	    if [ "${OVS_SRC_PATH}" = "" ]; then
+            echo "Set the OVS_SRC_PATH var pointing to the location of ovs source code."
+            exit 1
+	    fi
+
+	    rm -rf ./ovs
+	    cp -rf $OVS_SRC_PATH ./ovs
+	    DO_RM_OVS='yes'
+    fi
+
+    if [ ! -d ./ovn ]; then
+	    echo "OVN_SRC_PATH = $OVN_SRC_PATH"
+	    if [ "${OVN_SRC_PATH}" = "" ]; then
+            echo "Set the OVN_SRC_PATH var pointing to the location of ovn source code."
+            exit 1
+	    fi
+	    rm -rf ovn
+	    cp -rf $OVN_SRC_PATH ovn
+	    DO_RM_OVN='yes'
+    fi
+
+    touch tst.rpm
+    build-images
+    rm -f tst.rpm
     [ -n "$DO_RM_OVS" ] && rm -rf ovs ||:
     [ -n "$DO_RM_OVN" ] && rm -rf ovn ||:
-
-    if [ "$rpm_present" == "no" ]; then
-        rm -f tst.rpm
-    fi
 }
 
 function run-command() {
@@ -539,8 +544,15 @@ case "${1:-""}" in
     stop)
         stop;;
     build)
-        echo "Building images"
-        build-images
+        check-for-ovn-rpms
+        if [ "$USE_OVN_RPMS" == "yes" ]
+        then
+            echo "Building images using OVN rpms"
+            build-images-with-ovn-rpms
+        else
+            echo "Building images using OVN/OVS sources"
+            build-images-with-ovn-sources
+        fi
         ;;
     set-ovn-remote)
         for (( i=1; i<=CHASSIS_COUNT; i++ )); do

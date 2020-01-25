@@ -63,6 +63,12 @@ RUN dnf -y update && dnf -y install\
  pacemaker pcs resource-agents\
  tcpdump
 
+#RUN dnf install @'Development Tools' -y
+RUN dnf -y install automake make gcc autoconf openssl-devel \
+  python3 libtool openssl iputils \
+  net-tools.x86_64 uuid.x86_64 iproute.x86_64 dnf-utils libreswan
+
+RUN pip3 install six
 ## Configure docker
 
 RUN systemctl enable docker.service

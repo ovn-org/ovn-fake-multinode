@@ -15,10 +15,13 @@
 set -o xtrace
 set -o errexit
 
-build_from_src="no"
-ls ovn*.rpm > /dev/null || build_from_src="yes"
+use_ovn_rpm=$1
+#ls ovn*.rpm > /dev/null || build_from_src="yes"
 
-if [ "$build_from_src" = "yes" ]; then
+if [ "$use_ovn_rpm" = "yes" ]; then
+    ls ovn*.rpm > /dev/null || exit 1
+    dnf install -y /*.rpm
+else
     # get ovs source always from master as its needed as dependency
     cd /ovs
     # build and install
@@ -35,13 +38,14 @@ if [ "$build_from_src" = "yes" ]; then
     --enable-ssl --with-ovs-source=/ovs/ --with-ovs-build=/ovs/
     make -j$(($(nproc) + 1)) V=0
     make install
-else
-    dnf install -y /*.rpm
 fi
+
 # remove unused packages to make the container light weight.
 for i in $(package-cleanup --leaves --all);
     do dnf remove -y $i
 done
 dnf autoremove -y
+
+dnf -y remove automake make gcc autoconf openssl-devel libtool ||:
 
 rm -rf /ovs /ovn
