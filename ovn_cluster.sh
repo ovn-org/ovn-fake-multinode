@@ -19,7 +19,7 @@ GW_PREFIX="ovn-gw-"
 CHASSIS_COUNT=${CHASSIS_COUNT:-2}
 CHASSIS_NAMES=()
 
-GW_COUNT=1
+GW_COUNT=${GW_COUNT:-1}
 GW_NAMES=()
 
 OVN_BR="br-ovn"
@@ -97,11 +97,16 @@ function start-container() {
                 --name="${name}" --hostname="${name}" "${image}" > /dev/null
 }
 
+function stop-container() {
+    local cid=$1
+    ${RUNC_CMD} rm -f "${cid}" > /dev/null
+}
+
 function stop() {
     echo "Stopping OVN cluster"
     # Delete the containers
     for cid in $( ${RUNC_CMD} ps -qa --filter "name=${CENTRAL_NAME}|${GW_PREFIX}|${CHASSIS_PREFIX}" ); do
-       ${RUNC_CMD} rm -f "${cid}" > /dev/null
+       stop-container ${cid}
     done
 
     ip netns delete ovnfake-ext || :
@@ -207,17 +212,44 @@ EOF
     done
 }
 
+function wait-containers() {
+    local ovn_central=$1
+    echo "Waiting for containers to be up.."
+    while : ; do
+        local done="1"
+        if [ "${ovn_central}" == "yes" ]; then
+            [[ $(count-containers "${CENTRAL_NAME}") == "0" ]] && continue
+            for name in "${GW_NAMES[@]}"; do
+                [[ $(count-containers "${name}") == "0" ]] && done="0" && break
+            done
+            [[ ${done} == "0" ]] && continue
+        fi
+        for name in "${CHASSIS_NAMES[@]}"; do
+            [[ $(count-containers "${name}") == "0" ]] && done="0" && break
+        done
+        [[ ${done} == "1" ]] && break
+    done
+}
+
 function start() {
     echo "Starting OVN cluster"
     ovn_central=$1
     ovn_remote=$2
+    ovn_add_chassis=$3
 
     if [ "x$ovn_central" == "x" ]; then
         ovn_central="yes"
     fi
 
-    # Check that no ovn related containers are running.
-    check-no-containers "start"
+    # Check that no ovn related containers are running if we're not adding
+    # new containers.
+    if [ "x$ovn_add_chassis" == "x" ]; then
+        ovn_add_chassis="no"
+    fi
+
+    if [ "$ovn_add_chassis" == "no" ]; then
+        check-no-containers "start"
+    fi
 
     # docker-in-docker's use of volumes is not compatible with SELinux
     #check-selinux
@@ -238,8 +270,7 @@ function start() {
         start-container "${CHASSIS_IMAGE}" "${name}"
     done
 
-    echo "Sleeping for 2 seconds"
-    sleep 2
+    wait-containers ${ovn_central}
 
     echo "Adding ovs-ports"
     # Add ovs ports to each of the nodes.
@@ -406,7 +437,8 @@ function set-ovn-remote() {
 function start-chassis() {
     ovn_central=no
     ovn_remote=$1
-    start $ovn_central $ovn_remote
+    ovn_add_chassis=$2
+    start $ovn_central $ovn_remote $ovn_add_chassis
 }
 
 function build-images() {
@@ -539,10 +571,18 @@ case "${1:-""}" in
         for (( i=1; i<=CHASSIS_COUNT; i++ )); do
             CHASSIS_NAMES+=( "${CHASSIS_PREFIX}${i}" )
         done
-        start-chassis $2
+        start-chassis $2 "no"
+        ;;
+    add-chassis)
+        CHASSIS_NAMES=( "$2" )
+        start-chassis $3 "yes"
         ;;
     stop)
-        stop;;
+        stop
+        ;;
+    stop-chassis)
+        stop-container $2
+        ;;
     build)
         check-for-ovn-rpms
         if [ "$USE_OVN_RPMS" == "yes" ]
@@ -564,6 +604,12 @@ case "${1:-""}" in
         done
 
         set-ovn-remote $2
+        ;;
+    set-chassis-ovn-remote)
+        CHASSIS_NAMES=( "$2" )
+        GW_NAMES=( )
+        CHASSIS_PREFIX=$2
+        set-ovn-remote $3
         ;;
     run-command)
         for (( i=1; i<=CHASSIS_COUNT; i++ )); do
