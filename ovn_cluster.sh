@@ -497,20 +497,17 @@ function build-images-with-ovn-sources() {
 function run-command() {
     cmd=$@
 
-    ${RUNC_CMD} ps | grep $CENTRAL_NAME
-    if [ "$?" == "0" ]; then
-        echo "Running command $cmd in container $CENTRAL_NAME"
-        ${RUNC_CMD} exec $CENTRAL_NAME $cmd ||:
-    fi
+    echo "Running command $cmd in container $CENTRAL_NAME"
+    ${RUNC_CMD} exec $CENTRAL_NAME $cmd ||:
 
     for name in "${GW_NAMES[@]}"; do
         echo "Running command $cmd in container $name"
-        ${RUNC_CMD} exec $CENTRAL_NAME $cmd ||:
+        ${RUNC_CMD} exec $name $cmd ||:
     done
 
     for name in "${CHASSIS_NAMES[@]}"; do
         echo "Running command $cmd in container $name"
-        ${RUNC_CMD} exec $CENTRAL_NAME $cmd ||:
+        ${RUNC_CMD} exec $name $cmd ||:
     done
 }
 
