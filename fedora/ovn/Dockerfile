@@ -3,20 +3,15 @@ MAINTAINER "Numan Siddique" <numans@ovn.org>
 
 ARG OVS_SRC_PATH
 ARG OVN_SRC_PATH
-
-#RUN dnf install @'Development Tools' -y
-RUN dnf -y update && dnf -y install automake make gcc autoconf openssl-devel \
-  python3 libtool openssl iputils \
-  net-tools.x86_64 uuid.x86_64 iproute.x86_64 dnf-utils
-
-RUN pip3 install six
+ARG USE_OVN_RPMS
 
 COPY $OVS_SRC_PATH /ovs
 COPY $OVN_SRC_PATH /ovn
 
+COPY *.rpm /
 COPY install_ovn.sh /install_ovn.sh
 
-RUN /install_ovn.sh
+RUN /install_ovn.sh $USE_OVN_RPMS
 
 RUN dnf -y remove automake make gcc autoconf openssl-devel libtool
 
