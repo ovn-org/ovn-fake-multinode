@@ -36,6 +36,8 @@ IP_HOST=${IP_HOST:-170.168.0.0}
 IP_CIDR=${IP_CIDR:-16}
 IP_START=${IP_START:-170.168.0.2}
 
+OVN_DB_CLUSTER="${OVN_DB_CLUSTER:-no}"
+
 function check-selinux() {
   if [[ "$(getenforce)" = "Enforcing" ]]; then
     >&2 echo "Error: This script is not compatible with SELinux enforcing mode."
@@ -131,8 +133,23 @@ function add-ovs-docker-ports() {
     ip_index=0
     ip=$(./ip_gen.py $ip_range/$cidr $ip_start 0)
     if [ "$ovn_central" == "yes" ]; then
-        ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip}/${cidr}
-        echo "$ip" > _ovn_remote
+        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+            ip1=$ip
+            ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME}-1 --ipaddress=${ip1}/${cidr}
+
+            (( ip_index += 1))
+            ip2=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
+            ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME}-2 --ipaddress=${ip2}/${cidr}
+
+            (( ip_index += 1))
+            ip3=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
+            ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME}-3 --ipaddress=${ip3}/${cidr}
+            echo "tcp:$ip1:6642,tcp:$ip2:6642:tcp:$ip3:6642" > _ovn_remote
+        else
+            ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip}/${cidr}
+            echo "tcp:$ip:6642" > _ovn_remote
+        fi
+
         for name in "${GW_NAMES[@]}"; do
             (( ip_index += 1))
             ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
@@ -147,8 +164,13 @@ function add-ovs-docker-ports() {
     done
 
     if [ "$ovn_central" == "yes" ]; then
-        ${OVS_DOCKER} add-port br-ovn-ext eth2 ${CENTRAL_NAME}
-
+        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+            ${OVS_DOCKER} add-port br-ovn-ext eth2 ${CENTRAL_NAME}-1
+            ${OVS_DOCKER} add-port br-ovn-ext eth2 ${CENTRAL_NAME}-2
+            ${OVS_DOCKER} add-port br-ovn-ext eth2 ${CENTRAL_NAME}-3
+        else
+            ${OVS_DOCKER} add-port br-ovn-ext eth2 ${CENTRAL_NAME}
+        fi
         for name in "${GW_NAMES[@]}"; do
             ${OVS_DOCKER} add-port br-ovn-ext eth2 ${name}
         done
@@ -201,7 +223,9 @@ EOF
     chmod 0755 /tmp/ovn-multinode/configure_ovn.sh
 
     if [ "$ovn_central" == "yes" ]; then
-        ${RUNC_CMD} exec ${CENTRAL_NAME} bash /data/configure_ovn.sh eth1 $ovn_remote
+        if [ "$OVN_DB_CLUSTER" != "yes" ]; then
+            ${RUNC_CMD} exec ${CENTRAL_NAME} bash /data/configure_ovn.sh eth1 $ovn_remote
+        fi
 
         for name in "${GW_NAMES[@]}"; do
             ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 $ovn_remote
@@ -218,7 +242,13 @@ function wait-containers() {
     while : ; do
         local done="1"
         if [ "${ovn_central}" == "yes" ]; then
-            [[ $(count-containers "${CENTRAL_NAME}") == "0" ]] && continue
+            if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+                [[ $(count-containers "${CENTRAL_NAME}-1") == "0" ]] && continue
+                [[ $(count-containers "${CENTRAL_NAME}-2") == "0" ]] && continue
+                [[ $(count-containers "${CENTRAL_NAME}-3") == "0" ]] && continue
+            else
+                [[ $(count-containers "${CENTRAL_NAME}") == "0" ]] && continue
+            fi
             for name in "${GW_NAMES[@]}"; do
                 [[ $(count-containers "${name}") == "0" ]] && done="0" && break
             done
@@ -229,6 +259,35 @@ function wait-containers() {
         done
         [[ ${done} == "1" ]] && break
     done
+}
+
+# Starts OVN dbs RAFT cluster on ovn-central-1, ovn-central-2 and ovn-central-3
+# containers.
+function start-db-cluster() {
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ${OVNCTL_PATH} --db-nb-addr=170.168.0.2 --db-nb-create-insecure-remote=yes  \
+--db-sb-addr=170.168.0.2 --db-sb-create-insecure-remote=yes --db-nb-cluster-local-addr=170.168.0.2 \
+--db-sb-cluster-local-addr=170.168.0.2 start_ovsdb
+
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-2 ${OVNCTL_PATH} --db-nb-addr=170.168.0.3 --db-nb-create-insecure-remote=yes  \
+--db-sb-addr=170.168.0.3 --db-sb-create-insecure-remote=yes \
+--db-nb-cluster-local-addr=170.168.0.3 --db-nb-cluster-remote-addr=170.168.0.2 \
+--db-sb-cluster-local-addr=170.168.0.3 --db-sb-cluster-remote-addr=170.168.0.2 start_ovsdb
+
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-3 ${OVNCTL_PATH} --db-nb-addr=170.168.0.4 --db-nb-create-insecure-remote=yes  \
+--db-sb-addr=170.168.0.4 --db-sb-create-insecure-remote=yes \
+--db-nb-cluster-local-addr=170.168.0.4 --db-nb-cluster-remote-addr=170.168.0.2 \
+--db-sb-cluster-local-addr=170.168.0.4 --db-sb-cluster-remote-addr=170.168.0.2 start_ovsdb
+
+    # This can be improved.
+    sleep 3
+
+    # Start ovn-northd only on ovn-central-1
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ${OVNCTL_PATH}  --ovn-northd-nb-db=tcp:170.168.0.2:6641,tcp:170.168.0.3:6641,tcp:170.168.0.4:6641 \
+--ovn-northd-sb-db=tcp:170.168.0.2:6642,tcp:170.168.0.3:6642,tcp:170.168.0.4:6642 --ovn-manage-ovsdb=no start_northd
+
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ovn-nbctl set-connection ptcp:6641
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ovn-sbctl set-connection ptcp:6642
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ovn-sbctl set connection . inactivity_probe=180000
 }
 
 function start() {
@@ -260,7 +319,14 @@ function start() {
 
     # Create containers
     if [ "$ovn_central" == "yes" ]; then
-        start-container "${CENTRAL_IMAGE}" "${CENTRAL_NAME}"
+        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+            start-container "${CENTRAL_IMAGE}" "${CENTRAL_NAME}-1"
+            start-container "${CENTRAL_IMAGE}" "${CENTRAL_NAME}-2"
+            start-container "${CENTRAL_IMAGE}" "${CENTRAL_NAME}-3"
+        else
+            start-container "${CENTRAL_IMAGE}" "${CENTRAL_NAME}"
+        fi
+
         for name in "${GW_NAMES[@]}"; do
             start-container "${GW_IMAGE}" "${name}"
         done
@@ -278,21 +344,25 @@ function start() {
 
     if [ "$ovn_remote" == "" ]; then
         if [ -e _ovn_remote ]; then
-            ovn_remote="tcp:$(cat _ovn_remote):6642"
+            ovn_remote="$(cat _ovn_remote)"
         fi
     fi
 
     # Start OVN db servers on central node
     if [ "$ovn_central" == "yes" ]; then
-        ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} start_northd
-        sleep 2
-        ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-nbctl set-connection ptcp:6641
-        ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-sbctl set-connection ptcp:6642
-        ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-sbctl set connection . inactivity_probe=180000
+        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+            start-db-cluster
+        else
+            ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} start_northd
+            sleep 2
+            ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-nbctl set-connection ptcp:6641
+            ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-sbctl set-connection ptcp:6642
+            ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-sbctl set connection . inactivity_probe=180000
 
-        # Start openvswitch and ovn-controller on each node
-        ${RUNC_CMD} exec ${CENTRAL_NAME} /usr/share/openvswitch/scripts/ovs-ctl start --system-id=${CENTRAL_NAME}
-        ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} start_controller
+            # Start openvswitch and ovn-controller on each node
+            ${RUNC_CMD} exec ${CENTRAL_NAME} /usr/share/openvswitch/scripts/ovs-ctl start --system-id=${CENTRAL_NAME}
+            ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} start_controller
+        fi
 
         for name in "${GW_NAMES[@]}"; do
             ${RUNC_CMD} exec ${name} /usr/share/openvswitch/scripts/ovs-ctl start --system-id=${name}
@@ -367,7 +437,12 @@ ovn-nbctl lr-nat-add lr0 snat 172.16.0.100 20.0.0.0/24
 
 EOF
     chmod 0755 /tmp/ovn-multinode/create_ovn_res.sh
-    ${RUNC_CMD} exec ${CENTRAL_NAME} bash /data/create_ovn_res.sh
+    if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+        central=${CENTRAL_NAME}-1
+    else
+        central=${CENTRAL_NAME}
+    fi
+    ${RUNC_CMD} exec ${central} bash /data/create_ovn_res.sh
 
     cat << EOF > /tmp/ovn-multinode/create_fake_vm.sh
 #!/bin/bash
@@ -420,7 +495,9 @@ function set-ovn-remote() {
         exit 1
     fi
 
-    ${RUNC_CMD} exec ${CENTRAL_NAME} ovs-vsctl set open . external_ids:ovn-remote=$ovn_remote
+    if [ "$OVN_DB_CLUSTER" != "yes" ]; then
+        ${RUNC_CMD} exec ${CENTRAL_NAME} ovs-vsctl set open . external_ids:ovn-remote=$ovn_remote
+    fi
 
     for name in "${GW_NAMES[@]}"; do
         echo "Setting remote for $name"
