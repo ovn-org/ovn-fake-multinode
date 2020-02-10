@@ -382,13 +382,35 @@ function create_fake_vms() {
     cat << EOF > /tmp/ovn-multinode/create_ovn_res.sh
 #!/bin/bash
 
+#set -o xtrace
+set -o errexit
+
 ovn-nbctl ls-add sw0
+
+# ovn dhcpd on sw0
+ovn-nbctl set logical_switch sw0 \
+  other_config:subnet="10.0.0.0/24" \
+  other_config:exclude_ips="10.0.0.1..10.0.0.2"
+ovn-nbctl dhcp-options-create 10.0.0.0/24
+CIDR_UUID=\$(ovn-nbctl --bare --columns=_uuid find dhcp_options cidr="10.0.0.0/24")
+ovn-nbctl dhcp-options-set-options \$CIDR_UUID \
+  lease_time=3600 \
+  router=10.0.0.1 \
+  server_id=10.0.0.1 \
+  server_mac=c0:ff:ee:00:00:01
+
 ovn-nbctl lsp-add sw0 sw0-port1
 ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3"
 ovn-nbctl lsp-add sw0 sw0-port2
 ovn-nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4"
+
+# Create ports in sw0 that will use dhcp from ovn
 ovn-nbctl lsp-add sw0 sw0-port3
-ovn-nbctl lsp-set-addresses sw0-port3 "50:54:00:00:00:05 10.0.0.5"
+ovn-nbctl lsp-set-addresses sw0-port3 "50:54:00:00:00:05 dynamic"
+ovn-nbctl lsp-set-dhcpv4-options sw0-port3 \$CIDR_UUID
+ovn-nbctl lsp-add sw0 sw0-port4
+ovn-nbctl lsp-set-addresses sw0-port4 "50:54:00:00:00:06 dynamic"
+ovn-nbctl lsp-set-dhcpv4-options sw0-port4 \$CIDR_UUID
 
 # Create the second logical switch with one port
 ovn-nbctl ls-add sw1
@@ -444,7 +466,7 @@ EOF
     fi
     ${RUNC_CMD} exec ${central} bash /data/create_ovn_res.sh
 
-    cat << EOF > /tmp/ovn-multinode/create_fake_vm.sh
+    cat << EOF > /tmp/ovn-multinode/create_fake_vm_static_ip.sh
 #!/bin/bash
 create_fake_vm() {
     name=\$1
@@ -467,12 +489,40 @@ create_fake_vm() {
 create_fake_vm \$@
 
 EOF
+    chmod 0755 /tmp/ovn-multinode/create_fake_vm_static_ip.sh
 
+    cat << EOF > /tmp/ovn-multinode/create_fake_vm.sh
+#!/bin/bash
+create_fake_vm() {
+    name=\$1
+    mac=\$2
+    iface_id=\$3
+    ip netns add \$name
+    ovs-vsctl add-port br-int \$name -- set interface \$name type=internal
+    ip link set \$name netns \$name
+    ip netns exec \$name ip link set lo up
+    ip netns exec \$name ip link set \$name address \$mac
+    ip netns exec \$name ip link set \$name up
+    ovs-vsctl set Interface \$name external_ids:iface-id=\$iface_id
+
+    #ip netns exec \$name dhclient -sf /bin/fullstack-dhclient-script --no-pid -1 -v --timeout 10 \$name
+    ip netns exec \$name dhclient -sf /bin/fullstack-dhclient-script --no-pid -nw \$name
+}
+
+create_fake_vm \$@
+
+EOF
     chmod 0755 /tmp/ovn-multinode/create_fake_vm.sh
+
     echo "Creating a fake VM in "${CHASSIS_NAMES[0]}" for logical port - sw0-port1"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 sw0-port1
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm_static_ip.sh sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 sw0-port1
     echo "Creating a fake VM in "${CHASSIS_NAMES[1]}" for logical port - sw1-port1"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[1]}" bash /data/create_fake_vm.sh sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 sw1-port1
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[1]}" bash /data/create_fake_vm_static_ip.sh sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 sw1-port1
+
+    echo "Creating a fake VM in "${CHASSIS_NAMES[0]}" for logical port - sw0-port3 (using dhcp)"
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw0p3 50:54:00:00:00:05 sw0-port3
+    echo "Creating a fake VM in "${CHASSIS_NAMES[1]}" for logical port - sw0-port4 (using dhcp)"
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[1]}" bash /data/create_fake_vm.sh sw0p4 50:54:00:00:00:06 sw0-port4
 
     echo "Creating a fake VM in the host bridge br-ovn-ext"
     ip netns add ovnfake-ext
@@ -594,7 +644,7 @@ case "${1:-""}" in
             BUILD=
             BUILD_IMAGES=
             WAIT_FOR_CLUSTER=1
-            REMOVE_EXISTING_CULSTER=
+            REMOVE_EXISTING_CLUSTER=
             ADDITIONAL_NETWORK_INTERFACE=
             case $opt in
             i)

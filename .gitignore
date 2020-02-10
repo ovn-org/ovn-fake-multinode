@@ -1,4 +1,6 @@
 *~
 .vagrant
 dbus.service
-ovs/
+/ovs
+/ovn
+_ovn_remote

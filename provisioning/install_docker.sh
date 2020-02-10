@@ -18,5 +18,5 @@ fi
 
 [ -d /home/vagrant ] && usermod -a -G docker vagrant
 
-systemctl disable firewalld   ;  # yuck!
+systemctl disable firewalld ||:  ;  # yuck!
 systemctl enable --now docker

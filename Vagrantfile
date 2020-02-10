@@ -13,7 +13,7 @@ SCRIPT
 
 $build_images = <<SCRIPT
 cd /vagrant && \
-OVN_SRC_PATH=${HOME}/ovn OVS_SRC_PATH=${HOME}/ovs time ./ovn_cluster.sh build
+OVN_SRC_PATH=./ovn OVS_SRC_PATH=./ovs time ./ovn_cluster.sh build
 SCRIPT
 
 $start_ovn_cluster = <<SCRIPT
@@ -27,6 +27,7 @@ Vagrant.configure(2) do |config|
 
     config.vm.hostname = "ovnhostvm"
     config.vm.box = "centos/8"
+    config.vm.box_check_update = false
 
     # config.vm.synced_folder "#{ENV['PWD']}", "/vagrant", sshfs_opts_append: "-o nonempty", disabled: false, type: "sshfs"
     # Optional: Uncomment line above and comment out the line below if you have
@@ -43,6 +44,10 @@ Vagrant.configure(2) do |config|
     config.vm.provision :shell do |shell|
         shell.privileged = false
         shell.path = 'provisioning/grab_ovn_src.sh'
+    end
+
+    config.vm.provision :shell do |shell|
+        shell.path = 'provisioning/enable_nesting.sh'
     end
 
     config.vm.provision :shell do |shell|
