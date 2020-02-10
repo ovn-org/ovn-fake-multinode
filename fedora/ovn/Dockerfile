@@ -13,7 +13,13 @@ COPY install_ovn.sh /install_ovn.sh
 
 RUN /install_ovn.sh $USE_OVN_RPMS
 
-RUN dnf -y remove automake make gcc autoconf openssl-devel libtool
+# Generate variation of dhclient-script that we can use for fake vm namespaces
+RUN dnf -y install dhclient which
+COPY fedora/ovn/generate_dhclient_script_for_fullstack.sh /tmp/generate_dhclient_script_for_fullstack.sh
+COPY fedora/ovn/install_dhclient_script.sh /tmp/install_dhclient_script.sh
+RUN /tmp/install_dhclient_script.sh /
+
+RUN dnf -y remove automake make gcc autoconf openssl-devel libtool which
 
 VOLUME ["/var/log/openvswitch", \
 "/var/lib/openvswitch", "/var/run/openvswitch", "/etc/openvswitch", \
