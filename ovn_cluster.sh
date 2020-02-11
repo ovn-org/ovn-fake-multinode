@@ -105,7 +105,6 @@ function start-container() {
 
 function stop-container() {
     local cid=$1
-
     ${RUNC_CMD} rm -f "${cid}" > /dev/null
 }
 
