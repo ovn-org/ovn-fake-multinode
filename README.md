@@ -18,7 +18,7 @@ Step 1: Build the container images
 
 By default, Docker is used (we can switch to Podman later):
 ```
-OVN_SRC_PATH=<path_t_ovn_src_folder> OVS_SRC_PATH=<path_to_ovs_src_folder> sudo ./ovn_cluster.sh build
+sudo OVN_SRC_PATH=<path_t_ovn_src_folder> OVS_SRC_PATH=<path_to_ovs_src_folder> ./ovn_cluster.sh build
 ```
 
 This will create 2 docker images
