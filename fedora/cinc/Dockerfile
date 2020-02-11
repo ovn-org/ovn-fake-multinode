@@ -61,7 +61,9 @@ RUN dnf -y update && dnf -y install\
  openssh-clients\
  openssh-server\
  pacemaker pcs resource-agents\
- tcpdump
+ tcpdump\
+ dhclient\
+ which
 
 #RUN dnf install @'Development Tools' -y
 RUN dnf -y install automake make gcc autoconf openssl-devel \
@@ -82,6 +84,12 @@ RUN mkdir -p /usr/local/bin
 COPY dind-setup.sh /usr/local/bin/
 COPY dind-setup.service /etc/systemd/system/
 RUN systemctl enable dind-setup.service
+
+# Generate variation of dhclient-script that we can use for fake vm namespaces
+RUN mkdir -pv /bin
+COPY fedora/cinc/generate_dhclient_script_for_fullstack.sh /tmp/generate_dhclient_script_for_fullstack.sh
+RUN /tmp/generate_dhclient_script_for_fullstack.sh /
+RUN dnf -y remove which
 
 VOLUME ["/var/lib/docker"]
 
