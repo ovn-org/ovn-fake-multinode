@@ -24,6 +24,7 @@ GW_NAMES=()
 
 OVN_BR="br-ovn"
 OVN_EXT_BR="br-ovn-ext"
+OVN_BR_CLEANUP="${OVN_BR_CLEANUP:-yes}"
 
 OVS_DOCKER="./ovs-docker"
 
@@ -37,6 +38,9 @@ IP_CIDR=${IP_CIDR:-16}
 IP_START=${IP_START:-170.168.0.2}
 
 OVN_DB_CLUSTER="${OVN_DB_CLUSTER:-no}"
+
+CREATE_FAKE_VMS="${CREATE_FAKE_VMS:-yes}"
+
 
 function check-selinux() {
   if [[ "$(getenforce)" = "Enforcing" ]]; then
@@ -105,15 +109,25 @@ function stop-container() {
 }
 
 function stop() {
+    ip netns delete ovnfake-ext || :
+    if [ "${OVN_BR_CLEANUP}" == "yes" ]; then
+        ovs-vsctl --if-exists del-br $OVN_BR || exit 1
+        ovs-vsctl --if-exists del-br $OVN_EXT_BR || exit 1
+    else
+        del-ovs-docker-ports ${CENTRAL_NAME}
+        for name in "${GW_NAMES[@]}"; do
+            del-ovs-docker-ports ${name}
+        done
+        for name in "${CHASSIS_NAMES[@]}"; do
+            del-ovs-docker-ports ${name}
+        done
+    fi
+
     echo "Stopping OVN cluster"
     # Delete the containers
     for cid in $( ${RUNC_CMD} ps -qa --filter "name=${CENTRAL_NAME}|${GW_PREFIX}|${CHASSIS_PREFIX}" ); do
        stop-container ${cid}
     done
-
-    ip netns delete ovnfake-ext || :
-    ovs-vsctl --if-exists del-br $OVN_BR || exit 1
-    ovs-vsctl --if-exists del-br $OVN_EXT_BR || exit 1
 }
 
 function setup-ovs-in-host() {
@@ -179,6 +193,13 @@ function add-ovs-docker-ports() {
     for name in "${CHASSIS_NAMES[@]}"; do
         ${OVS_DOCKER} add-port br-ovn-ext eth2 ${name}
     done
+}
+
+function del-ovs-docker-ports() {
+    local name=$1
+
+    ${OVS_DOCKER} del-port $OVN_BR eth1 ${name} || :
+    ${OVS_DOCKER} del-port $OVN_EXT_BR eth2 ${name} || :
 }
 
 function configure-ovn() {
@@ -537,6 +558,7 @@ EOF
 
 function set-ovn-remote() {
     ovn_remote=$1
+    ovn_central=$2
     echo "OVN remote = $1"
     existing_chassis=$(count-chassis "${filter}")
     if (( existing_chassis == 0)); then
@@ -545,7 +567,7 @@ function set-ovn-remote() {
         exit 1
     fi
 
-    if [ "$OVN_DB_CLUSTER" != "yes" ]; then
+    if [ "$OVN_DB_CLUSTER" != "yes" ] && [ "$ovn_central" == "yes" ]; then
         ${RUNC_CMD} exec ${CENTRAL_NAME} ovs-vsctl set open . external_ids:ovn-remote=$ovn_remote
     fi
 
@@ -689,7 +711,9 @@ case "${1:-""}" in
         fi
 
         start
-        create_fake_vms
+        if [ "${CREATE_FAKE_VMS}" == "yes" ]; then
+            create_fake_vms
+        fi
         ;;
     start-chassis)
         for (( i=1; i<=CHASSIS_COUNT; i++ )); do
@@ -702,9 +726,17 @@ case "${1:-""}" in
         start-chassis $3 "yes"
         ;;
     stop)
+        for (( i=1; i<=CHASSIS_COUNT; i++ )); do
+            CHASSIS_NAMES+=( "${CHASSIS_PREFIX}${i}" )
+        done
+
+        for (( i=1; i<=GW_COUNT; i++ )); do
+            GW_NAMES+=( "${GW_PREFIX}${i}" )
+        done
         stop
         ;;
     stop-chassis)
+        del-ovs-docker-ports $2
         stop-container $2
         ;;
     build)
@@ -727,13 +759,13 @@ case "${1:-""}" in
             GW_NAMES+=( "${GW_PREFIX}${i}" )
         done
 
-        set-ovn-remote $2
+        set-ovn-remote $2 "yes"
         ;;
     set-chassis-ovn-remote)
         CHASSIS_NAMES=( "$2" )
         GW_NAMES=( )
         CHASSIS_PREFIX=$2
-        set-ovn-remote $3
+        set-ovn-remote $3 "no"
         ;;
     run-command)
         for (( i=1; i<=CHASSIS_COUNT; i++ )); do

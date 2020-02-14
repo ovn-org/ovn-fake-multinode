@@ -63,7 +63,8 @@ RUN dnf -y update && dnf -y install\
  pacemaker pcs resource-agents\
  tcpdump\
  dhclient\
- which
+ which\
+ fping
 
 #RUN dnf install @'Development Tools' -y
 RUN dnf -y install automake make gcc autoconf openssl-devel \
