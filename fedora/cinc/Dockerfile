@@ -64,7 +64,8 @@ RUN dnf -y update && dnf -y install\
  tcpdump\
  dhclient\
  which\
- fping
+ fping\
+ perf
 
 #RUN dnf install @'Development Tools' -y
 RUN dnf -y install automake make gcc autoconf openssl-devel \
