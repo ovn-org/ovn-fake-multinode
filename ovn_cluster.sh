@@ -141,7 +141,7 @@ function add-ovs-docker-ports() {
     cidr=$IP_CIDR
     ip_start=$IP_START
 
-    br=br-ovn
+    br=$OVN_BR
     eth=eth1
 
     ip_index=0
@@ -179,19 +179,19 @@ function add-ovs-docker-ports() {
 
     if [ "$ovn_central" == "yes" ]; then
         if [ "$OVN_DB_CLUSTER" = "yes" ]; then
-            ${OVS_DOCKER} add-port br-ovn-ext eth2 ${CENTRAL_NAME}-1
-            ${OVS_DOCKER} add-port br-ovn-ext eth2 ${CENTRAL_NAME}-2
-            ${OVS_DOCKER} add-port br-ovn-ext eth2 ${CENTRAL_NAME}-3
+            ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-1
+            ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-2
+            ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-3
         else
-            ${OVS_DOCKER} add-port br-ovn-ext eth2 ${CENTRAL_NAME}
+            ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}
         fi
         for name in "${GW_NAMES[@]}"; do
-            ${OVS_DOCKER} add-port br-ovn-ext eth2 ${name}
+            ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${name}
         done
     fi
 
     for name in "${CHASSIS_NAMES[@]}"; do
-        ${OVS_DOCKER} add-port br-ovn-ext eth2 ${name}
+        ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${name}
     done
 }
 
@@ -213,12 +213,11 @@ function configure-ovn() {
 
 eth=\$1
 ovn_remote=\$2
+is_gw=\$3
 
 if [ "\$eth" = "" ]; then
     eth=eth1
 fi
-
-ovn_remote=\$2
 
 if [ "\$ovn_remote" = "" ]; then
     ovn_remote="tcp:170.168.0.2:6642"
@@ -235,6 +234,9 @@ ovs-vsctl set open . external-ids:ovn-remote-probe-interval=180000
 ovs-vsctl --if-exists del-br br-ex
 ovs-vsctl add-br br-ex
 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
+if [ "\$is_gw" = 'is_gw' ]; then
+    ovs-vsctl set open . external-ids:ovn-cms-options=enable-chassis-as-gw
+fi
 
 ip link set eth2 down
 ovs-vsctl add-port br-ex eth2
@@ -245,15 +247,15 @@ EOF
 
     if [ "$ovn_central" == "yes" ]; then
         if [ "$OVN_DB_CLUSTER" != "yes" ]; then
-            ${RUNC_CMD} exec ${CENTRAL_NAME} bash /data/configure_ovn.sh eth1 $ovn_remote
+            ${RUNC_CMD} exec ${CENTRAL_NAME} bash /data/configure_ovn.sh eth1 $ovn_remote not_gw
         fi
 
         for name in "${GW_NAMES[@]}"; do
-            ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 $ovn_remote
+            ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 $ovn_remote is_gw
         done
     fi
     for name in "${CHASSIS_NAMES[@]}"; do
-        ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 $ovn_remote
+        ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 $ovn_remote not_gw
     done
 }
 
@@ -361,7 +363,7 @@ function start() {
 
     echo "Adding ovs-ports"
     # Add ovs ports to each of the nodes.
-    add-ovs-docker-ports $ovn_central
+    add-ovs-docker-ports ${ovn_central}
 
     if [ "$ovn_remote" == "" ]; then
         if [ -e _ovn_remote ]; then
@@ -487,47 +489,32 @@ EOF
     fi
     ${RUNC_CMD} exec ${central} bash /data/create_ovn_res.sh
 
-    cat << EOF > /tmp/ovn-multinode/create_fake_vm_static_ip.sh
-#!/bin/bash
-create_fake_vm() {
-    name=\$1
-    mac=\$2
-    ip=\$3
-    mask=\$4
-    gw=\$5
-    iface_id=\$6
-    ip netns add \$name
-    ovs-vsctl add-port br-int \$name -- set interface \$name type=internal
-    ip link set \$name netns \$name
-    ip netns exec \$name ip link set lo up
-    ip netns exec \$name ip link set \$name address \$mac
-    ip netns exec \$name ip addr add \$ip/\$mask dev \$name
-    ip netns exec \$name ip link set \$name up
-    ip netns exec \$name ip route add default via \$gw
-    ovs-vsctl set Interface \$name external_ids:iface-id=\$iface_id
-}
-
-create_fake_vm \$@
-
-EOF
-    chmod 0755 /tmp/ovn-multinode/create_fake_vm_static_ip.sh
-
     cat << EOF > /tmp/ovn-multinode/create_fake_vm.sh
 #!/bin/bash
 create_fake_vm() {
-    name=\$1
-    mac=\$2
-    iface_id=\$3
+    iface_id=\$1
+    name=\$2
+    mac=\$3
+    ip=\$4
+    mask=\$5
+    gw=\$6
     ip netns add \$name
-    ovs-vsctl add-port br-int \$name -- set interface \$name type=internal
+    ovs-vsctl \
+      -- add-port br-int \$name \
+      -- set interface \$name type=internal \
+      -- set Interface \$name external_ids:iface-id=\$iface_id
     ip link set \$name netns \$name
     ip netns exec \$name ip link set lo up
-    ip netns exec \$name ip link set \$name address \$mac
-    ip netns exec \$name ip link set \$name up
-    ovs-vsctl set Interface \$name external_ids:iface-id=\$iface_id
-
-    #ip netns exec \$name dhclient -sf /bin/fullstack-dhclient-script --no-pid -1 -v --timeout 10 \$name
-    ip netns exec \$name dhclient -sf /bin/fullstack-dhclient-script --no-pid -nw \$name
+    [ -n "\$mac" ] && ip netns exec \$name ip link set \$name address \$mac
+    if [ "\$ip" == "dhcp" ]; then
+      ip netns exec \$name ip link set \$name up
+      #ip netns exec \$name dhclient -sf /bin/fullstack-dhclient-script --no-pid -1 -v --timeout 10 \$name
+      ip netns exec \$name dhclient -sf /bin/fullstack-dhclient-script --no-pid -nw \$name
+    else
+      ip netns exec \$name ip addr add \$ip/\$mask dev \$name
+      ip netns exec \$name ip link set \$name up
+      ip netns exec \$name ip route add default via \$gw
+    fi
 }
 
 create_fake_vm \$@
@@ -536,18 +523,18 @@ EOF
     chmod 0755 /tmp/ovn-multinode/create_fake_vm.sh
 
     echo "Creating a fake VM in "${CHASSIS_NAMES[0]}" for logical port - sw0-port1"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm_static_ip.sh sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 sw0-port1
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1
     echo "Creating a fake VM in "${CHASSIS_NAMES[1]}" for logical port - sw1-port1"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[1]}" bash /data/create_fake_vm_static_ip.sh sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 sw1-port1
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[1]}" bash /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1
 
     echo "Creating a fake VM in "${CHASSIS_NAMES[0]}" for logical port - sw0-port3 (using dhcp)"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw0p3 50:54:00:00:00:05 sw0-port3
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw0-port3 sw0p3 50:54:00:00:00:05 dhcp
     echo "Creating a fake VM in "${CHASSIS_NAMES[1]}" for logical port - sw0-port4 (using dhcp)"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[1]}" bash /data/create_fake_vm.sh sw0p4 50:54:00:00:00:06 sw0-port4
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[1]}" bash /data/create_fake_vm.sh sw0-port4 sw0p4 50:54:00:00:00:06 dhcp
 
-    echo "Creating a fake VM in the host bridge br-ovn-ext"
+    echo "Creating a fake VM in the host bridge ${OVN_EXT_BR}"
     ip netns add ovnfake-ext
-    ovs-vsctl add-port br-ovn-ext ovnfake-ext -- set interface ovnfake-ext type=internal
+    ovs-vsctl add-port ${OVN_EXT_BR} ovnfake-ext -- set interface ovnfake-ext type=internal
     ip link set ovnfake-ext netns ovnfake-ext
     ip netns exec ovnfake-ext ip link set lo up
     ip netns exec ovnfake-ext ip link set ovnfake-ext address 30:54:00:00:00:50
