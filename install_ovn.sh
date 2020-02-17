@@ -16,7 +16,13 @@ set -o xtrace
 set -o errexit
 
 use_ovn_rpm=$1
-#ls ovn*.rpm > /dev/null || build_from_src="yes"
+debug_syms=$2
+
+if [ "$debug_syms" = "yes" ]; then
+    cflags='-g'
+else
+    cflags=
+fi
 
 if [ "$use_ovn_rpm" = "yes" ]; then
     ls ovn*.rpm > /dev/null || exit 1
@@ -27,7 +33,7 @@ else
     # build and install
     ./boot.sh
     ./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
-    --enable-ssl --disable-libcapng
+    --enable-ssl --disable-libcapng CFLAGS="${cflags}"
     make -j$(($(nproc) + 1)) V=0
     make install
 
@@ -35,7 +41,8 @@ else
     # build and install
     ./boot.sh
     ./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
-    --enable-ssl --with-ovs-source=/ovs/ --with-ovs-build=/ovs/
+    --enable-ssl --with-ovs-source=/ovs/ --with-ovs-build=/ovs/ \
+    CFLAGS="${cflags}"
     make -j$(($(nproc) + 1)) V=0
     make install
 fi
