@@ -39,6 +39,7 @@ IP_CIDR=${IP_CIDR:-16}
 IP_START=${IP_START:-170.168.0.2}
 
 OVN_DB_CLUSTER="${OVN_DB_CLUSTER:-no}"
+OVN_MONITOR_ALL="${OVN_MONITOR_ALL:-no}"
 
 CREATE_FAKE_VMS="${CREATE_FAKE_VMS:-yes}"
 
@@ -206,6 +207,7 @@ function del-ovs-docker-ports() {
 function configure-ovn() {
     ovn_central=$1
     ovn_remote=$2
+    ovn_monitor_all=$3
 
     rm -f /tmp/ovn-multinode/configure_ovn.sh
 
@@ -215,6 +217,7 @@ function configure-ovn() {
 eth=\$1
 ovn_remote=\$2
 is_gw=\$3
+ovn_monitor_all=\$4
 
 if [ "\$eth" = "" ]; then
     eth=eth1
@@ -232,6 +235,10 @@ ovs-vsctl set open . external-ids:ovn-remote=\$ovn_remote
 ovs-vsctl set open . external-ids:ovn-openflow-probe-interval=60
 ovs-vsctl set open . external-ids:ovn-remote-probe-interval=180000
 
+if [ "\$ovn_monitor_all" = "yes" ]; then
+    ovs-vsctl set open . external-ids:ovn-monitor-all=true
+fi
+
 ovs-vsctl --if-exists del-br br-ex
 ovs-vsctl add-br br-ex
 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
@@ -248,15 +255,18 @@ EOF
 
     if [ "$ovn_central" == "yes" ]; then
         if [ "$OVN_DB_CLUSTER" != "yes" ]; then
-            ${RUNC_CMD} exec ${CENTRAL_NAME} bash /data/configure_ovn.sh eth1 $ovn_remote not_gw
+            ${RUNC_CMD} exec ${CENTRAL_NAME} bash /data/configure_ovn.sh eth1 \
+                ${ovn_remote} not_gw ${ovn_monitor_all}
         fi
 
         for name in "${GW_NAMES[@]}"; do
-            ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 $ovn_remote is_gw
+            ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 \
+                ${ovn_remote} is_gw ${ovn_monitor_all}
         done
     fi
     for name in "${CHASSIS_NAMES[@]}"; do
-        ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 $ovn_remote not_gw
+        ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 \
+            ${ovn_remote} not_gw ${ovn_monitor_all}
     done
 }
 
@@ -399,7 +409,7 @@ function start() {
         ${RUNC_CMD} exec ${name} ${OVNCTL_PATH} start_controller
     done
 
-    configure-ovn $ovn_central $ovn_remote
+    configure-ovn $ovn_central $ovn_remote ${OVN_MONITOR_ALL}
 }
 
 function create_fake_vms() {
