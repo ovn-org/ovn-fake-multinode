@@ -11,7 +11,7 @@ CHASSIS_IMAGE="ovn/ovn-multi-node"
 GW_IMAGE="ovn/ovn-multi-node"
 
 USE_OVN_RPMS="${USE_OVN_RPMS:-no}"
-DEBUG_SYMS="${DEBUG_SYMS:-no}"
+EXTRA_OPTIMIZE="${EXTRA_OPTIMIZE:-no}"
 
 CENTRAL_NAME="ovn-central"
 CHASSIS_PREFIX="${CHASSIS_PREFIX:-ovn-chassis-}"
@@ -596,7 +596,7 @@ function build-images() {
 
     ${RUNC_CMD} build -t ovn/ovn-multi-node --build-arg OVS_SRC_PATH=ovs \
     --build-arg OVN_SRC_PATH=ovn --build-arg USE_OVN_RPMS=${USE_OVN_RPMS} \
-    --build-arg DEBUG_SYMS=${DEBUG_SYMS} \
+    --build-arg EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} \
     -f  fedora/ovn/Dockerfile .
 }
 
