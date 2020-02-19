@@ -16,12 +16,12 @@ set -o xtrace
 set -o errexit
 
 use_ovn_rpm=$1
-debug_syms=$2
+extra_optimize=$2
 
-if [ "$debug_syms" = "yes" ]; then
-    cflags='-g'
+if [ "$extra_optimize" = "yes" ]; then
+    cflags='-g -march=native -O3 -fno-omit-frame-pointer'
 else
-    cflags=
+    cflags='-g -O2 -fno-omit-frame-pointer'
 fi
 
 if [ "$use_ovn_rpm" = "yes" ]; then
