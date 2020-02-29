@@ -47,6 +47,15 @@ else
     make install
 fi
 
+# Generate SSL certificates.
+cd /
+mkdir -p /opt/ovn
+OVS_PKI="ovs-pki --dir=/opt/ovn/pki"
+$OVS_PKI init
+pushd /opt/ovn
+$OVS_PKI req+sign ovn switch
+popd
+
 # remove unused packages to make the container light weight.
 for i in $(package-cleanup --leaves --all);
     do dnf remove -y $i
