@@ -18,7 +18,7 @@
 #      $ docker run -d --privileged openshift/dind
 #
 
-FROM fedora:30
+FROM fedora:31
 
 # Fix 'WARNING: terminal is not fully functional' when TERM=dumb
 ENV TERM=xterm
@@ -69,7 +69,7 @@ RUN dnf -y update && dnf -y install\
 
 #RUN dnf install @'Development Tools' -y
 RUN dnf -y install automake make gcc autoconf openssl-devel \
-  python3 libtool openssl iputils \
+  python3 libtool openssl iputils  python3-pip \
   net-tools.x86_64 uuid.x86_64 iproute.x86_64 dnf-utils libreswan
 
 RUN pip3 install six
