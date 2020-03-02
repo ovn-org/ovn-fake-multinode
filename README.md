@@ -70,6 +70,6 @@ To deploy a VM that automatically performs the steps above as part of
 it's provisioning, consider using Vagrantfile located in this repo.
 
 ```
-git clone https://github.com/numansiddique/ovn-fake-multinode.git && \
+git clone https://github.com/ovn-org/ovn-fake-multinode.git && \
 cd ovn-fake-multinode && vagrant up && vagrant ssh
 ```
