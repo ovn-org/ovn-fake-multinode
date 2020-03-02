@@ -41,8 +41,16 @@ IP_START=${IP_START:-170.168.0.2}
 OVN_DB_CLUSTER="${OVN_DB_CLUSTER:-no}"
 OVN_MONITOR_ALL="${OVN_MONITOR_ALL:-no}"
 
+ENABLE_SSL="${ENABLE_SSL:=yes}"
+REMOTE_PROT=ssl
+
+if [ "$ENABLE_SSL" != "yes" ]; then
+    REMOTE_PROT=tcp
+fi
+
 CREATE_FAKE_VMS="${CREATE_FAKE_VMS:-yes}"
 
+SSL_CERTS_PATH="/opt/ovn"
 
 function check-selinux() {
   if [[ "$(getenforce)" = "Enforcing" ]]; then
@@ -160,10 +168,10 @@ function add-ovs-docker-ports() {
             (( ip_index += 1))
             ip3=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
             ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME}-3 --ipaddress=${ip3}/${cidr}
-            echo "tcp:$ip1:6642,tcp:$ip2:6642:tcp:$ip3:6642" > _ovn_remote
+            echo "${REMOTE_PROT}:$ip1:6642,${REMOTE_PROT}:$ip2:6642,${REMOTE_PROT}:$ip3:6642" > _ovn_remote
         else
             ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip}/${cidr}
-            echo "tcp:$ip:6642" > _ovn_remote
+            echo "${REMOTE_PROT}:$ip:6642" > _ovn_remote
         fi
 
         for name in "${GW_NAMES[@]}"; do
@@ -254,11 +262,6 @@ EOF
     chmod 0755 /tmp/ovn-multinode/configure_ovn.sh
 
     if [ "$ovn_central" == "yes" ]; then
-        if [ "$OVN_DB_CLUSTER" != "yes" ]; then
-            ${RUNC_CMD} exec ${CENTRAL_NAME} bash /data/configure_ovn.sh eth1 \
-                ${ovn_remote} not_gw ${ovn_monitor_all}
-        fi
-
         for name in "${GW_NAMES[@]}"; do
             ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 \
                 ${ovn_remote} is_gw ${ovn_monitor_all}
@@ -298,30 +301,51 @@ function wait-containers() {
 # Starts OVN dbs RAFT cluster on ovn-central-1, ovn-central-2 and ovn-central-3
 # containers.
 function start-db-cluster() {
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ${OVNCTL_PATH} --db-nb-addr=170.168.0.2 --db-nb-create-insecure-remote=yes  \
---db-sb-addr=170.168.0.2 --db-sb-create-insecure-remote=yes --db-nb-cluster-local-addr=170.168.0.2 \
---db-sb-cluster-local-addr=170.168.0.2 start_ovsdb
+    local ssl_certs_path=$1
+    SSL_ARGS=""
+    if [ "$ENABLE_SSL" == "yes" ]; then
+        SSL_ARGS="--ovn-nb-db-ssl-key=${SSL_CERTS_PATH}/ovn-privkey.pem \
+                  --ovn-nb-db-ssl-cert=${SSL_CERTS_PATH}/ovn-cert.pem \
+                  --ovn-nb-db-ssl-ca-cert=${SSL_CERTS_PATH}/pki/switchca/cacert.pem \
+                  --ovn-sb-db-ssl-key=${SSL_CERTS_PATH}/ovn-privkey.pem \
+                  --ovn-sb-db-ssl-cert=${SSL_CERTS_PATH}/ovn-cert.pem \
+                  --ovn-sb-db-ssl-ca-cert=${SSL_CERTS_PATH}/pki/switchca/cacert.pem \
+                  --ovn-northd-ssl-key=${SSL_CERTS_PATH}/ovn-privkey.pem \
+                  --ovn-northd-ssl-cert=${SSL_CERTS_PATH}/ovn-cert.pem \
+                  --ovn-northd-ssl-ca-cert=${SSL_CERTS_PATH}/pki/switchca/cacert.pem"
+    fi
 
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-2 ${OVNCTL_PATH} --db-nb-addr=170.168.0.3 --db-nb-create-insecure-remote=yes  \
---db-sb-addr=170.168.0.3 --db-sb-create-insecure-remote=yes \
---db-nb-cluster-local-addr=170.168.0.3 --db-nb-cluster-remote-addr=170.168.0.2 \
---db-sb-cluster-local-addr=170.168.0.3 --db-sb-cluster-remote-addr=170.168.0.2 start_ovsdb
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ${OVNCTL_PATH} --db-nb-addr=170.168.0.2 \
+    --db-sb-addr=170.168.0.2 --db-nb-cluster-local-addr=170.168.0.2 \
+    --db-nb-cluster-local-proto=${REMOTE_PROT} \
+    --db-sb-cluster-local-addr=170.168.0.2 --db-sb-cluster-local-proto=${REMOTE_PROT} \
+    --ovn-nb-db-ssl-key=/data/${CENTRAL_NAME}/ovnnb-privkey.pem \
+    $SSL_ARGS start_ovsdb
 
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-3 ${OVNCTL_PATH} --db-nb-addr=170.168.0.4 --db-nb-create-insecure-remote=yes  \
---db-sb-addr=170.168.0.4 --db-sb-create-insecure-remote=yes \
---db-nb-cluster-local-addr=170.168.0.4 --db-nb-cluster-remote-addr=170.168.0.2 \
---db-sb-cluster-local-addr=170.168.0.4 --db-sb-cluster-remote-addr=170.168.0.2 start_ovsdb
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-2 ${OVNCTL_PATH} --db-nb-addr=170.168.0.3  \
+    --db-sb-addr=170.168.0.3 \
+    --db-nb-cluster-local-addr=170.168.0.3 --db-nb-cluster-remote-addr=170.168.0.2 \
+    --db-sb-cluster-local-addr=170.168.0.3 --db-sb-cluster-remote-addr=170.168.0.2 \
+    --db-nb-cluster-local-proto=${REMOTE_PROT} --db-sb-cluster-local-proto=${REMOTE_PROT} \
+    --db-nb-cluster-remote-proto=${REMOTE_PROT} --db-sb-cluster-remote-proto=${REMOTE_PROT} \
+    $SSL_ARGS start_ovsdb
+
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-3 ${OVNCTL_PATH} --db-nb-addr=170.168.0.4 \
+    --db-sb-addr=170.168.0.4  \
+    --db-nb-cluster-local-addr=170.168.0.4 --db-nb-cluster-remote-addr=170.168.0.2 \
+    --db-sb-cluster-local-addr=170.168.0.4 --db-sb-cluster-remote-addr=170.168.0.2 \
+    --db-nb-cluster-local-proto=${REMOTE_PROT} --db-sb-cluster-local-proto=${REMOTE_PROT} \
+    --db-nb-cluster-remote-proto=${REMOTE_PROT} --db-sb-cluster-remote-proto=${REMOTE_PROT} \
+    $SSL_ARGS start_ovsdb
 
     # This can be improved.
     sleep 3
 
     # Start ovn-northd only on ovn-central-1
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ${OVNCTL_PATH}  --ovn-northd-nb-db=tcp:170.168.0.2:6641,tcp:170.168.0.3:6641,tcp:170.168.0.4:6641 \
---ovn-northd-sb-db=tcp:170.168.0.2:6642,tcp:170.168.0.3:6642,tcp:170.168.0.4:6642 --ovn-manage-ovsdb=no start_northd
-
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ovn-nbctl set-connection ptcp:6641
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ovn-sbctl set-connection ptcp:6642
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ovn-sbctl set connection . inactivity_probe=180000
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ${OVNCTL_PATH}  \
+    --ovn-northd-nb-db=${REMOTE_PROT}:170.168.0.2:6641,${REMOTE_PROT}:170.168.0.3:6641,${REMOTE_PROT}:170.168.0.4:6641 \
+    --ovn-northd-sb-db=${REMOTE_PROT}:170.168.0.2:6642,${REMOTE_PROT}:170.168.0.3:6642,${REMOTE_PROT}:170.168.0.4:6642 --ovn-manage-ovsdb=no \
+    $SSL_ARGS start_northd
 }
 
 function start() {
@@ -384,29 +408,42 @@ function start() {
 
     # Start OVN db servers on central node
     if [ "$ovn_central" == "yes" ]; then
+        central=${CENTRAL_NAME}
         if [ "$OVN_DB_CLUSTER" = "yes" ]; then
             start-db-cluster
+            central=${CENTRAL_NAME}-1
         else
             ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} start_northd
             sleep 2
-            ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-nbctl set-connection ptcp:6641
-            ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-sbctl set-connection ptcp:6642
-            ${RUNC_CMD} exec ${CENTRAL_NAME} ovn-sbctl set connection . inactivity_probe=180000
-
-            # Start openvswitch and ovn-controller on each node
-            ${RUNC_CMD} exec ${CENTRAL_NAME} /usr/share/openvswitch/scripts/ovs-ctl start --system-id=${CENTRAL_NAME}
-            ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} start_controller
         fi
 
+        if [ "$ENABLE_SSL" == "yes" ]; then
+            ${RUNC_CMD} exec ${central} ovn-nbctl set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
+            ${RUNC_CMD} exec ${central} ovn-sbctl set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
+        fi
+        ${RUNC_CMD} exec ${central} ovn-nbctl set-connection p${REMOTE_PROT}:6641
+        ${RUNC_CMD} exec ${central} ovn-nbctl set connection . inactivity_probe=180000
+
+        ${RUNC_CMD} exec ${central} ovn-sbctl set-connection p${REMOTE_PROT}:6642
+        ${RUNC_CMD} exec ${central} ovn-sbctl set connection . inactivity_probe=180000
+
         for name in "${GW_NAMES[@]}"; do
+            SSL_ARGS=
+            if [ "$ENABLE_SSL" == "yes" ]; then
+                SSL_ARGS="--ovn-controller-ssl-key=${SSL_CERTS_PATH}/ovn-privkey.pem --ovn-controller-ssl-cert=${SSL_CERTS_PATH}/ovn-cert.pem --ovn-controller-ssl-ca-cert=${SSL_CERTS_PATH}/pki/switchca/cacert.pem"
+            fi
             ${RUNC_CMD} exec ${name} /usr/share/openvswitch/scripts/ovs-ctl start --system-id=${name}
-            ${RUNC_CMD} exec ${name} ${OVNCTL_PATH} start_controller
+            ${RUNC_CMD} exec ${name} ${OVNCTL_PATH} start_controller ${SSL_ARGS}
         done
     fi
 
     for name in "${CHASSIS_NAMES[@]}"; do
+        SSL_ARGS=
+        if [ "$ENABLE_SSL" == "yes" ]; then
+            SSL_ARGS="--ovn-controller-ssl-key=${SSL_CERTS_PATH}/ovn-privkey.pem --ovn-controller-ssl-cert=${SSL_CERTS_PATH}/ovn-cert.pem --ovn-controller-ssl-ca-cert=${SSL_CERTS_PATH}/pki/switchca/cacert.pem"
+        fi
         ${RUNC_CMD} exec ${name} /usr/share/openvswitch/scripts/ovs-ctl start --system-id=${name}
-        ${RUNC_CMD} exec ${name} ${OVNCTL_PATH} start_controller
+        ${RUNC_CMD} exec ${name} ${OVNCTL_PATH} start_controller ${SSL_ARGS}
     done
 
     configure-ovn $ovn_central $ovn_remote ${OVN_MONITOR_ALL}
