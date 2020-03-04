@@ -160,14 +160,16 @@ function add-ovs-docker-ports() {
         if [ "$OVN_DB_CLUSTER" = "yes" ]; then
             ip1=$ip
             ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME}-1 --ipaddress=${ip1}/${cidr}
-
+            echo $ip1 > _ovn_central_1
             (( ip_index += 1))
             ip2=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
             ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME}-2 --ipaddress=${ip2}/${cidr}
+            echo $ip2 > _ovn_central_2
 
             (( ip_index += 1))
             ip3=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
             ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME}-3 --ipaddress=${ip3}/${cidr}
+            echo $ip3 > _ovn_central_3
             echo "${REMOTE_PROT}:$ip1:6642,${REMOTE_PROT}:$ip2:6642,${REMOTE_PROT}:$ip3:6642" > _ovn_remote
         else
             ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip}/${cidr}
@@ -315,25 +317,29 @@ function start-db-cluster() {
                   --ovn-northd-ssl-ca-cert=${SSL_CERTS_PATH}/pki/switchca/cacert.pem"
     fi
 
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ${OVNCTL_PATH} --db-nb-addr=170.168.0.2 \
-    --db-sb-addr=170.168.0.2 --db-nb-cluster-local-addr=170.168.0.2 \
+    central_1_ip=$(cat _ovn_central_1)
+    central_2_ip=$(cat _ovn_central_2)
+    central_3_ip=$(cat _ovn_central_3)
+
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ${OVNCTL_PATH} --db-nb-addr=${central_1_ip} \
+    --db-sb-addr=${central_1_ip} --db-nb-cluster-local-addr=${central_1_ip} \
     --db-nb-cluster-local-proto=${REMOTE_PROT} \
-    --db-sb-cluster-local-addr=170.168.0.2 --db-sb-cluster-local-proto=${REMOTE_PROT} \
+    --db-sb-cluster-local-addr=${central_1_ip} --db-sb-cluster-local-proto=${REMOTE_PROT} \
     --ovn-nb-db-ssl-key=/data/${CENTRAL_NAME}/ovnnb-privkey.pem \
     $SSL_ARGS start_ovsdb
 
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-2 ${OVNCTL_PATH} --db-nb-addr=170.168.0.3  \
-    --db-sb-addr=170.168.0.3 \
-    --db-nb-cluster-local-addr=170.168.0.3 --db-nb-cluster-remote-addr=170.168.0.2 \
-    --db-sb-cluster-local-addr=170.168.0.3 --db-sb-cluster-remote-addr=170.168.0.2 \
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-2 ${OVNCTL_PATH} --db-nb-addr=${central_2_ip}  \
+    --db-sb-addr=${central_2_ip} \
+    --db-nb-cluster-local-addr=${central_2_ip} --db-nb-cluster-remote-addr=${central_1_ip} \
+    --db-sb-cluster-local-addr=${central_2_ip} --db-sb-cluster-remote-addr=${central_1_ip} \
     --db-nb-cluster-local-proto=${REMOTE_PROT} --db-sb-cluster-local-proto=${REMOTE_PROT} \
     --db-nb-cluster-remote-proto=${REMOTE_PROT} --db-sb-cluster-remote-proto=${REMOTE_PROT} \
     $SSL_ARGS start_ovsdb
 
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-3 ${OVNCTL_PATH} --db-nb-addr=170.168.0.4 \
-    --db-sb-addr=170.168.0.4  \
-    --db-nb-cluster-local-addr=170.168.0.4 --db-nb-cluster-remote-addr=170.168.0.2 \
-    --db-sb-cluster-local-addr=170.168.0.4 --db-sb-cluster-remote-addr=170.168.0.2 \
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-3 ${OVNCTL_PATH} --db-nb-addr=${central_3_ip} \
+    --db-sb-addr=${central_3_ip}  \
+    --db-nb-cluster-local-addr=${central_3_ip} --db-nb-cluster-remote-addr=${central_1_ip} \
+    --db-sb-cluster-local-addr=${central_3_ip} --db-sb-cluster-remote-addr=${central_1_ip} \
     --db-nb-cluster-local-proto=${REMOTE_PROT} --db-sb-cluster-local-proto=${REMOTE_PROT} \
     --db-nb-cluster-remote-proto=${REMOTE_PROT} --db-sb-cluster-remote-proto=${REMOTE_PROT} \
     $SSL_ARGS start_ovsdb
@@ -343,8 +349,8 @@ function start-db-cluster() {
 
     # Start ovn-northd only on ovn-central-1
     ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ${OVNCTL_PATH}  \
-    --ovn-northd-nb-db=${REMOTE_PROT}:170.168.0.2:6641,${REMOTE_PROT}:170.168.0.3:6641,${REMOTE_PROT}:170.168.0.4:6641 \
-    --ovn-northd-sb-db=${REMOTE_PROT}:170.168.0.2:6642,${REMOTE_PROT}:170.168.0.3:6642,${REMOTE_PROT}:170.168.0.4:6642 --ovn-manage-ovsdb=no \
+    --ovn-northd-nb-db=${REMOTE_PROT}:${central_1_ip}:6641,${REMOTE_PROT}:${central_2_ip}:6641,${REMOTE_PROT}:${central_3_ip}:6641 \
+    --ovn-northd-sb-db=${REMOTE_PROT}:${central_1_ip}:6642,${REMOTE_PROT}:${central_2_ip}:6642,${REMOTE_PROT}:${central_3_ip}:6642 --ovn-manage-ovsdb=no \
     $SSL_ARGS start_northd
 }
 
