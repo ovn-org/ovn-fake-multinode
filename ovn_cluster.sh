@@ -124,7 +124,13 @@ function stop() {
         ovs-vsctl --if-exists del-br $OVN_BR || exit 1
         ovs-vsctl --if-exists del-br $OVN_EXT_BR || exit 1
     else
-        del-ovs-docker-ports ${CENTRAL_NAME}
+        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+            del-ovs-docker-ports ${CENTRAL_NAME}-1
+            del-ovs-docker-ports ${CENTRAL_NAME}-2
+            del-ovs-docker-ports ${CENTRAL_NAME}-3
+        else
+            del-ovs-docker-ports ${CENTRAL_NAME}
+        fi
         for name in "${GW_NAMES[@]}"; do
             del-ovs-docker-ports ${name}
         done
