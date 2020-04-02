@@ -187,6 +187,14 @@ function add-ovs-docker-ports() {
             ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
             ${OVS_DOCKER} add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
         done
+    else
+        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+            (( ip_index += 2))
+        fi
+
+        if [ "$GW_COUNT" -gt 0 ]; then
+            (( ip_index += $GW_COUNT))
+        fi
     fi
 
     for name in "${CHASSIS_NAMES[@]}"; do
@@ -779,6 +787,7 @@ case "${1:-""}" in
         start-chassis $2 "no"
         ;;
     add-chassis)
+        GW_COUNT=0
         CHASSIS_NAMES=( "$2" )
         start-chassis $3 "yes"
         ;;
