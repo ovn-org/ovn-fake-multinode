@@ -844,6 +844,12 @@ case "${1:-""}" in
 
         shift;
         run-command $@
+        ;;
+    --version)
+        ;&
+    -v)
+        v=$(cat $(dirname $0)/VERSION)
+        echo "v$v"
     esac
 
 exit 0
