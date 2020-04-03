@@ -54,7 +54,7 @@ Vagrant.configure(2) do |config|
         shell.path = 'provisioning/install_docker.sh'
     end
 
-    config.vm.provision "build_images", type: "shell", inline: $build_images, privileged: false
+    config.vm.provision "build_images", type: "shell", inline: $build_images, privileged: true
 
     # Install and start ovs used to interconnect the docker
     # containers that are used to emulate the ovn chassis (below). This does not need

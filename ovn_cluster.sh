@@ -1,9 +1,11 @@
 #!/bin/bash
 
+[ $EUID -eq 0 ] || { echo 'must be root' >&2; exit 1; }
+
 #set -o xtrace
 set -o errexit
 
-RUNC_CMD="${RUNC_CMD:-sudo docker}"
+RUNC_CMD="${RUNC_CMD:-docker}"
 
 BASE_IMAGE="ovn/cinc"
 CENTRAL_IMAGE="ovn/ovn-multi-node"
