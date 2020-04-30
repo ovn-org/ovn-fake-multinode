@@ -363,8 +363,22 @@ function start-db-cluster() {
     # This can be improved.
     sleep 3
 
-    # Start ovn-northd only on ovn-central-1
+    # Start ovn-northd on all ovn-central nodes. One of the instance gets the lock from
+    # SB DB ovsdb-server and becomes active. Most likely ovn-northd in ${CENTRAL_NAME}-1
+    # will become active as it is started first.
+    # 'ovn-appctl -t ovn-northd status' will give the status of ovn-northd i.e if it
+    # has lock and active or not.
     ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ${OVNCTL_PATH}  \
+    --ovn-northd-nb-db=${REMOTE_PROT}:${central_1_ip}:6641,${REMOTE_PROT}:${central_2_ip}:6641,${REMOTE_PROT}:${central_3_ip}:6641 \
+    --ovn-northd-sb-db=${REMOTE_PROT}:${central_1_ip}:6642,${REMOTE_PROT}:${central_2_ip}:6642,${REMOTE_PROT}:${central_3_ip}:6642 --ovn-manage-ovsdb=no \
+    $SSL_ARGS start_northd
+
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-2 ${OVNCTL_PATH}  \
+    --ovn-northd-nb-db=${REMOTE_PROT}:${central_1_ip}:6641,${REMOTE_PROT}:${central_2_ip}:6641,${REMOTE_PROT}:${central_3_ip}:6641 \
+    --ovn-northd-sb-db=${REMOTE_PROT}:${central_1_ip}:6642,${REMOTE_PROT}:${central_2_ip}:6642,${REMOTE_PROT}:${central_3_ip}:6642 --ovn-manage-ovsdb=no \
+    $SSL_ARGS start_northd
+
+    ${RUNC_CMD} exec ${CENTRAL_NAME}-3 ${OVNCTL_PATH}  \
     --ovn-northd-nb-db=${REMOTE_PROT}:${central_1_ip}:6641,${REMOTE_PROT}:${central_2_ip}:6641,${REMOTE_PROT}:${central_3_ip}:6641 \
     --ovn-northd-sb-db=${REMOTE_PROT}:${central_1_ip}:6642,${REMOTE_PROT}:${central_2_ip}:6642,${REMOTE_PROT}:${central_3_ip}:6642 --ovn-manage-ovsdb=no \
     $SSL_ARGS start_northd
