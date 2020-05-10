@@ -113,6 +113,12 @@ function start-container() {
 
   ${RUNC_CMD} run  -dt ${volumes} -v "/tmp/ovn-multinode:/data" --privileged \
                 --name="${name}" --hostname="${name}" "${image}" > /dev/null
+
+  # Make sure ipv6 in container is enabled if we will be using it
+  if [ "$IPV6_UNDERLAY" = "yes" ]; then
+    ${RUNC_CMD} exec ${name} sysctl --quiet -w net.ipv6.conf.all.disable_ipv6=0
+    ${RUNC_CMD} exec ${name} sysctl --quiet -w net.ipv6.conf.default.disable_ipv6=0
+  fi
 }
 
 function stop-container() {
