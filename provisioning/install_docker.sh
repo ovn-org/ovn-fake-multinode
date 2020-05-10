@@ -18,5 +18,15 @@ fi
 
 [ -d /home/vagrant ] && usermod -a -G docker vagrant
 
+# Enable IPv6 (https://github.com/moby/moby/issues/36954)
+[ -e /etc/docker/daemon.json ] && { echo 'ERROR: docker/daemon.json already exists' >&2; exit 2; }
+mkdir -pv /etc/docker && cat <<EOT >/etc/docker/daemon.json
+{
+  "ipv6": true,
+  "fixed-cidr-v6": "2001:db8:1::/64"
+}
+EOT
+
+
 systemctl disable firewalld ||:  ;  # yuck!
 systemctl enable --now docker
