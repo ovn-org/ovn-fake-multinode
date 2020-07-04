@@ -26,7 +26,7 @@ fi
 
 if [ "$use_ovn_rpm" = "yes" ]; then
     ls ovn*.rpm > /dev/null || exit 1
-    dnf install -y /*.rpm
+    yum install -y /*.rpm
 else
     # get ovs source always from master as its needed as dependency
     cd /ovs
@@ -57,11 +57,7 @@ $OVS_PKI req+sign ovn switch
 popd
 
 # remove unused packages to make the container light weight.
-for i in $(package-cleanup --leaves --all);
-    do dnf remove -y $i
-done
-dnf autoremove -y
+yum autoremove -y
 
-dnf -y remove automake make gcc autoconf openssl-devel libtool ||:
 
 rm -rf /ovs /ovn

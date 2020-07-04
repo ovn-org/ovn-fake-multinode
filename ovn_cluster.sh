@@ -14,6 +14,7 @@ GW_IMAGE="ovn/ovn-multi-node"
 
 USE_OVN_RPMS="${USE_OVN_RPMS:-no}"
 EXTRA_OPTIMIZE="${EXTRA_OPTIMIZE:-no}"
+OS_IMAGE=${OS_IMAGE:-"fedora:31"}
 
 CENTRAL_NAME="ovn-central"
 CHASSIS_PREFIX="${CHASSIS_PREFIX:-ovn-chassis-}"
@@ -123,7 +124,7 @@ function start-container() {
 
 function stop-container() {
     local cid=$1
-    ${RUNC_CMD} rm -f "${cid}" > /dev/null
+    ${RUNC_CMD} rm -f --volumes "${cid}" > /dev/null
 }
 
 function stop() {
@@ -679,7 +680,12 @@ function build-images() {
     # Copy dbus.service to a place where image build can see it
     cp -v /usr/lib/systemd/system/dbus.service . 2>/dev/null || touch dbus.service
     sed -i 's/OOMScoreAdjust=-900//' ./dbus.service 2>/dev/null || :
-    ${RUNC_CMD} build -t ovn/cinc -f fedora/cinc/Dockerfile .
+    if echo $OS_IMAGE | grep ubi7
+    then
+        ${RUNC_CMD} build -t ovn/cinc --build-arg OS_IMAGE=${OS_IMAGE} -f fedora/cinc/rhel7-Dockerfile .
+    else
+        ${RUNC_CMD} build -t ovn/cinc --build-arg OS_IMAGE=${OS_IMAGE} -f fedora/cinc/Dockerfile .
+    fi
 
     ${RUNC_CMD} build -t ovn/ovn-multi-node --build-arg OVS_SRC_PATH=ovs \
     --build-arg OVN_SRC_PATH=ovn --build-arg USE_OVN_RPMS=${USE_OVN_RPMS} \
