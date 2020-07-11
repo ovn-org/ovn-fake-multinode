@@ -14,7 +14,6 @@ COPY install_ovn.sh /install_ovn.sh
 
 RUN /install_ovn.sh $USE_OVN_RPMS $EXTRA_OPTIMIZE
 
-RUN dnf -y remove automake make gcc autoconf openssl-devel libtool
 
 VOLUME ["/var/log/openvswitch", \
 "/var/lib/openvswitch", "/var/run/openvswitch", "/etc/openvswitch", \

@@ -18,12 +18,11 @@
 #      $ docker run -d --privileged openshift/dind
 #
 
-ARG OS_IMAGE
-FROM $OS_IMAGE
+FROM registry.access.redhat.com/ubi7/ubi:7.8
 
 # Fix 'WARNING: terminal is not fully functional' when TERM=dumb
 ENV TERM=xterm
-
+ARG OS_IMAGE
 
 
 VOLUME ["/run", "/tmp"]
