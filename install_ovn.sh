@@ -33,7 +33,7 @@ else
     # build and install
     ./boot.sh
     ./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
-    --enable-ssl --disable-libcapng CFLAGS="${cflags}"
+    --enable-ssl --disable-libcapng --enable-Werror CFLAGS="${cflags}"
     make -j$(($(nproc) + 1)) V=0
     make install
 
