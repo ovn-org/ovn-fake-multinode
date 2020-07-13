@@ -114,6 +114,8 @@ yum -y --skip-broken install\
 	which\
 	fping\
 	perf\
+	git\
+	lksctp-tools-devel\
 	hostname
 
 
