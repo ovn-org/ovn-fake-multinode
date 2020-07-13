@@ -32,7 +32,13 @@ Vagrant.configure(2) do |config|
     # config.vm.synced_folder "#{ENV['PWD']}", "/vagrant", sshfs_opts_append: "-o nonempty", disabled: false, type: "sshfs"
     # Optional: Uncomment line above and comment out the line below if you have
     # the vagrant sshfs plugin and would like to mount the directory using sshfs.
-    config.vm.synced_folder ".", "/vagrant", type: "rsync"
+    if ENV['VM_MOUNT_NFS']
+      # Mount ovs-multinode base directory trough NFS if requested. We decided
+      # not to use sshfs as the installation on Centos8 goes not smoothly.
+      config.vm.synced_folder "#{ENV['PWD']}", "/vagrant", type: "nfs", :linux__nfs_options => ['rw','no_subtree_check','no_root_squash']
+    else
+      config.vm.synced_folder ".", "/vagrant", type: "rsync"
+    end
 
     if ENV['OVS_DIR']
         config.vm.synced_folder ENV['OVS_DIR'], '/vagrant/ovs', type: 'rsync'
