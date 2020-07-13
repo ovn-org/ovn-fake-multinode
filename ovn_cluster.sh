@@ -55,6 +55,8 @@ CREATE_FAKE_VMS="${CREATE_FAKE_VMS:-yes}"
 
 SSL_CERTS_PATH="/opt/ovn"
 
+FAKENODE_MNT_DIR="${FAKENODE_MNT_DIR:-/tmp/ovn-multinode}"
+
 function check-selinux() {
   if [[ "$(getenforce)" = "Enforcing" ]]; then
     >&2 echo "Error: This script is not compatible with SELinux enforcing mode."
@@ -112,7 +114,7 @@ function start-container() {
   local volumes run_cmd
   volumes=""
 
-  ${RUNC_CMD} run  -dt ${volumes} -v "/tmp/ovn-multinode:/data" --privileged \
+  ${RUNC_CMD} run  -dt ${volumes} -v "${FAKENODE_MNT_DIR}:/data" --privileged \
                 --name="${name}" --hostname="${name}" "${image}" > /dev/null
 
   # Make sure ipv6 in container is enabled if we will be using it
@@ -242,9 +244,9 @@ function configure-ovn() {
     ovn_remote=$2
     ovn_monitor_all=$3
 
-    rm -f /tmp/ovn-multinode/configure_ovn.sh
+    rm -f ${FAKENODE_MNT_DIR}/configure_ovn.sh
 
-    cat << EOF > /tmp/ovn-multinode/configure_ovn.sh
+    cat << EOF > ${FAKENODE_MNT_DIR}/configure_ovn.sh
 #!/bin/bash
 
 eth=\$1
@@ -284,7 +286,7 @@ ovs-vsctl add-port br-ex eth2
 ip link set eth2 up
 EOF
 
-    chmod 0755 /tmp/ovn-multinode/configure_ovn.sh
+    chmod 0755 ${FAKENODE_MNT_DIR}/configure_ovn.sh
 
     if [ "$ovn_central" == "yes" ]; then
         for name in "${GW_NAMES[@]}"; do
@@ -416,7 +418,7 @@ function start() {
 
     setup-ovs-in-host
 
-    mkdir -p /tmp/ovn-multinode
+    mkdir -p ${FAKENODE_MNT_DIR}
 
     # Create containers
     if [ "$ovn_central" == "yes" ]; then
@@ -493,7 +495,7 @@ function start() {
 }
 
 function create_fake_vms() {
-    cat << EOF > /tmp/ovn-multinode/create_ovn_res.sh
+    cat << EOF > ${FAKENODE_MNT_DIR}/create_ovn_res.sh
 #!/bin/bash
 
 #set -o xtrace
@@ -575,7 +577,7 @@ ovn-nbctl lr-nat-add lr0 snat 172.16.0.100 10.0.0.0/24
 ovn-nbctl lr-nat-add lr0 snat 172.16.0.100 20.0.0.0/24
 
 EOF
-    chmod 0755 /tmp/ovn-multinode/create_ovn_res.sh
+    chmod 0755 ${FAKENODE_MNT_DIR}/create_ovn_res.sh
     if [ "$OVN_DB_CLUSTER" = "yes" ]; then
         central=${CENTRAL_NAME}-1
     else
@@ -583,7 +585,7 @@ EOF
     fi
     ${RUNC_CMD} exec ${central} bash /data/create_ovn_res.sh
 
-    cat << EOF > /tmp/ovn-multinode/create_fake_vm.sh
+    cat << EOF > ${FAKENODE_MNT_DIR}/create_fake_vm.sh
 #!/bin/bash
 create_fake_vm() {
     iface_id=\$1
@@ -618,7 +620,7 @@ create_fake_vm() {
 create_fake_vm \$@
 
 EOF
-    chmod 0755 /tmp/ovn-multinode/create_fake_vm.sh
+    chmod 0755 ${FAKENODE_MNT_DIR}/create_fake_vm.sh
 
     echo "Creating a fake VM in "${CHASSIS_NAMES[0]}" for logical port - sw0-port1"
     ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
