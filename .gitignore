@@ -4,3 +4,7 @@ dbus.service
 /ovs
 /ovn
 _ovn_remote
+/bench-uperf_git/
+/kernel_git/
+/pahole_git/
+/uperf_git/

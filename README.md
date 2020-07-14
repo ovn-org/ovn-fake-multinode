@@ -73,3 +73,10 @@ it's provisioning, consider using Vagrantfile located in this repo.
 git clone https://github.com/ovn-org/ovn-fake-multinode.git && \
 cd ovn-fake-multinode && vagrant up && vagrant ssh
 ```
+
+### Vagrant based development
+
+If you would like to use the _Vagrant_ based approach to do OVS
+and/or kernel development check out the following
+[document](README_DEVELOPMENT.md). It also has some simple traffic
+test to see throughput performance.
