@@ -56,6 +56,7 @@ CREATE_FAKE_VMS="${CREATE_FAKE_VMS:-yes}"
 SSL_CERTS_PATH="/opt/ovn"
 
 FAKENODE_MNT_DIR="${FAKENODE_MNT_DIR:-/tmp/ovn-multinode}"
+INSTALL_UTILS_FROM_SOURCES="${INSTALL_UTILS_FROM_SOURCES:-no}"
 
 function check-selinux() {
   if [[ "$(getenforce)" = "Enforcing" ]]; then
@@ -692,6 +693,7 @@ function build-images() {
     ${RUNC_CMD} build -t ovn/ovn-multi-node --build-arg OVS_SRC_PATH=ovs \
     --build-arg OVN_SRC_PATH=ovn --build-arg USE_OVN_RPMS=${USE_OVN_RPMS} \
     --build-arg EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} \
+    --build-arg INSTALL_UTILS_FROM_SOURCES=${INSTALL_UTILS_FROM_SOURCES} \
     -f  fedora/ovn/Dockerfile .
 }
 
