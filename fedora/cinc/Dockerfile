@@ -21,6 +21,9 @@
 ARG OS_IMAGE
 FROM $OS_IMAGE
 
+# Pass OS_IMAGE to build scripts too.
+ARG OS_IMAGE
+
 # Fix 'WARNING: terminal is not fully functional' when TERM=dumb
 ENV TERM=xterm
 
