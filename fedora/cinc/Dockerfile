@@ -41,7 +41,7 @@ RUN /install_pkg.sh $OS_IMAGE
 COPY dbus.service /etc/systemd/system/
 
 
-RUN pip3 install six
+RUN pip3 -qq install six
 
 
 RUN mkdir -p /usr/local/bin
