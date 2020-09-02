@@ -1,6 +1,8 @@
 
 image_name=${1:-"fedora:31"}
 
+yum -y install systemd
+
 systemctl mask \
 	auditd.service\
 	console-getty.service\
