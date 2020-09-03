@@ -705,7 +705,7 @@ function build-images() {
 
 function check-for-ovn-rpms() {
     USE_OVN_RPMS=yes
-    ls ovn*.rpm || USE_OVN_RPMS=no
+    ls ovn*.rpm > /dev/null 2>&1 || USE_OVN_RPMS=no
 }
 
 function build-images-with-ovn-rpms() {
