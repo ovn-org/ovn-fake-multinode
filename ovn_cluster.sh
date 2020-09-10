@@ -716,34 +716,35 @@ function build-images-with-ovn-rpms() {
 }
 
 function build-images-with-ovn-sources() {
-    if [ ! -d ./ovs ]; then
-	    echo "OVS_SRC_PATH = $OVS_SRC_PATH"
-	    if [ "${OVS_SRC_PATH}" = "" ]; then
-            echo "Set the OVS_SRC_PATH var pointing to the location of ovs source code."
-            exit 1
-	    fi
+    if [ ! -d "${OVS_SRC_PATH}" ]; then
+        echo "Set the OVS_SRC_PATH var pointing to the location of ovs source code."
+        exit 1
+    fi
 
-	    rm -rf ./ovs
-	    cp -rf $OVS_SRC_PATH ./ovs
-	    DO_RM_OVS='yes'
+    if [ ! -d "${OVN_SRC_PATH}" ]; then
+        echo "Set the OVN_SRC_PATH var pointing to the location of ovn source code."
+        exit 1
+    fi
+
+    echo "OVS_SRC_PATH = $OVS_SRC_PATH"
+    echo "OVN_SRC_PATH = $OVN_SRC_PATH"
+
+    if [ ! -d ./ovs ]; then
+        DO_RM_OVS='yes'
     fi
 
     if [ ! -d ./ovn ]; then
-	    echo "OVN_SRC_PATH = $OVN_SRC_PATH"
-	    if [ "${OVN_SRC_PATH}" = "" ]; then
-            echo "Set the OVN_SRC_PATH var pointing to the location of ovn source code."
-            exit 1
-	    fi
-	    rm -rf ovn
-	    cp -rf $OVN_SRC_PATH ovn
-	    DO_RM_OVN='yes'
+        DO_RM_OVN='yes'
     fi
+
+    cp -urf "${OVN_SRC_PATH}" ./ovn
+    cp -urf "${OVS_SRC_PATH}" ./ovs
 
     touch tst.rpm
     build-images
     rm -f tst.rpm
-    [ -n "$DO_RM_OVS" ] && rm -rf ovs ||:
-    [ -n "$DO_RM_OVN" ] && rm -rf ovn ||:
+    [ -n "$DO_RM_OVS" ] && rm -rf ./ovs ||:
+    [ -n "$DO_RM_OVN" ] && rm -rf ./ovn ||:
 }
 
 function run-command() {
