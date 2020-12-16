@@ -138,6 +138,7 @@ function stop-container() {
 
 function stop() {
     ip netns delete ovnfake-ext || :
+    ip netns delete ovnfake-int || :
     if [ "${OVN_BR_CLEANUP}" == "yes" ]; then
         ovs-vsctl --if-exists del-br $OVN_BR || exit 1
         ovs-vsctl --if-exists del-br $OVN_EXT_BR || exit 1
@@ -649,6 +650,15 @@ EOF
     ip netns exec ovnfake-ext ip addr add 3000::b/64 dev ovnfake-ext
     ip netns exec ovnfake-ext ip link set ovnfake-ext up
     ip netns exec ovnfake-ext ip route add default via 172.16.0.1
+
+    echo "Creating a fake VM in the ovs bridge ${OVN_BR}"
+    ip netns add ovnfake-int
+    ovs-vsctl add-port ${OVN_BR} ovnfake-int -- set interface ovnfake-int type=internal
+    ip link set ovnfake-int netns ovnfake-int
+    ip netns exec ovnfake-int ip link set lo up
+    ip netns exec ovnfake-int ip link set ovnfake-int address 30:54:00:00:00:60
+    ip netns exec ovnfake-int ip addr add 170.168.0.1/${IP_CIDR} dev ovnfake-int
+    ip netns exec ovnfake-int ip link set ovnfake-int up
 }
 
 function set-ovn-remote() {

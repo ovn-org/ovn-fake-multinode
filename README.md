@@ -64,6 +64,17 @@ ping -i 1 -c 1 -w 1 172.16.0.110 >/dev/null && \
 exit
 ```
 
+Similarly, a port called *ovnfake-int* is created in the fake node
+network. It can be used to access the emulated chassis.
+Here is an example:
+```
+sudo ip netns exec ovnfake-int bash
+ip a
+ping -i 1 -c 1 -w 1 170.168.0.2 >/dev/null && \
+   echo 'happy happy, joy joy' || echo sad panda
+exit
+```
+
 ## Vagrant based VM
 
 To deploy a VM that automatically performs the steps above as part of
