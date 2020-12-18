@@ -54,7 +54,8 @@ EOF
 	dnf -y --skip-broken install automake make gcc autoconf openssl-devel \
 		python3 libtool openssl python3-pip \
 		net-tools.x86_64 uuid.x86_64 iproute.x86_64 dnf-utils libreswan \
-		conntrack-tools nmap ninja-build meson libcap-devel gettext-devel libxslt git iproute
+		conntrack-tools nmap ninja-build meson libcap-devel gettext-devel \
+		libxslt git iproute procps-ng
 	dnf remove -y iputils
 
 	git clone https://github.com/iputils/iputils.git
@@ -79,7 +80,8 @@ EOF
 	yum -y --skip-broken install automake make gcc autoconf openssl-devel \
 		python3 libtool openssl python3-pip \
 		net-tools.x86_64 uuid.x86_64 iproute.x86_64 dnf-utils libreswan \
-		conntrack-tools nmap ninja-build meson libcap-devel gettext-devel libxslt git iproute
+		conntrack-tools nmap ninja-build meson libcap-devel gettext-devel \
+		libxslt git iproute procps-ng
 	yum remove -y iputils
 
 	# install iputils from source, as -W 0.1 is not supported
