@@ -15,6 +15,8 @@ GW_IMAGE="ovn/ovn-multi-node"
 USE_OVN_RPMS="${USE_OVN_RPMS:-no}"
 EXTRA_OPTIMIZE="${EXTRA_OPTIMIZE:-no}"
 OS_IMAGE=${OS_IMAGE:-"fedora:31"}
+OS_IMAGE_PULL_RETRIES=${OS_IMAGE_PULL_RETRIES:-40}
+OS_IMAGE_PULL_INTERVAL=${OS_IMAGE_PULL_INTERVAL:-5}
 
 CENTRAL_NAME="ovn-central"
 CHASSIS_PREFIX="${CHASSIS_PREFIX:-ovn-chassis-}"
@@ -695,10 +697,25 @@ function start-chassis() {
     start $ovn_central $ovn_remote $ovn_add_chassis
 }
 
+function os-image-pull() {
+    cmd="${RUNC_CMD} pull ${OS_IMAGE}"
+    retries=0
+    until [ $retries -ge ${OS_IMAGE_PULL_RETRIES} ]
+    do
+        $cmd && return
+        sleep ${OS_IMAGE_PULL_INTERVAL}
+        ((retries++)) ||:
+    done
+    echo >&2 "retry failure limit reached"
+    exit 1
+}
+
 function build-images() {
     # Copy dbus.service to a place where image build can see it
     cp -v /usr/lib/systemd/system/dbus.service . 2>/dev/null || touch dbus.service
     sed -i 's/OOMScoreAdjust=-900//' ./dbus.service 2>/dev/null || :
+
+    os-image-pull
     if echo $OS_IMAGE | grep ubi7
     then
         ${RUNC_CMD} build -t ovn/cinc --build-arg OS_IMAGE=${OS_IMAGE} -f fedora/cinc/rhel7-Dockerfile .
