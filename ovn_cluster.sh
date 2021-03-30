@@ -46,6 +46,14 @@ IP_START=${IP_START:-170.168.0.2}
 OVN_DB_CLUSTER="${OVN_DB_CLUSTER:-no}"
 OVN_MONITOR_ALL="${OVN_MONITOR_ALL:-no}"
 
+# Controls the type of OVS datapath to be used.
+# Possible values:
+# - 'system' for the kernel datapath.
+# - 'netdev' for the userspace datapath.
+# See 'datapath_type' in:
+# https://man7.org/linux/man-pages/man5/ovs-vswitchd.conf.db.5.html#Bridge_TABLE
+OVN_DP_TYPE="${OVN_DP_TYPE:-system}"
+
 ENABLE_SSL="${ENABLE_SSL:=yes}"
 REMOTE_PROT=ssl
 
@@ -253,6 +261,7 @@ function configure-ovn() {
     ovn_central=$1
     ovn_remote=$2
     ovn_monitor_all=$3
+    ovn_dp_type=$4
 
     rm -f ${FAKENODE_MNT_DIR}/configure_ovn.sh
 
@@ -263,6 +272,7 @@ eth=\$1
 ovn_remote=\$2
 is_gw=\$3
 ovn_monitor_all=\$4
+ovn_dp_type=\$5
 
 if [ "\$eth" = "" ]; then
     eth=eth1
@@ -284,8 +294,11 @@ if [ "\$ovn_monitor_all" = "yes" ]; then
     ovs-vsctl set open . external-ids:ovn-monitor-all=true
 fi
 
+ovs-vsctl set open . external-ids:ovn-bridge-datapath-type=\$ovn_dp_type
+
 ovs-vsctl --if-exists del-br br-ex
 ovs-vsctl add-br br-ex
+ovs-vsctl set Bridge br-ex datapath_type=\$ovn_dp_type
 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 if [ "\$is_gw" = 'is_gw' ]; then
     ovs-vsctl set open . external-ids:ovn-cms-options=enable-chassis-as-gw
@@ -301,12 +314,12 @@ EOF
     if [ "$ovn_central" == "yes" ]; then
         for name in "${GW_NAMES[@]}"; do
             ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 \
-                ${ovn_remote} is_gw ${ovn_monitor_all}
+                ${ovn_remote} is_gw ${ovn_monitor_all} ${ovn_dp_type}
         done
     fi
     for name in "${CHASSIS_NAMES[@]}"; do
         ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 \
-            ${ovn_remote} not_gw ${ovn_monitor_all}
+            ${ovn_remote} not_gw ${ovn_monitor_all} ${ovn_dp_type}
     done
 }
 
@@ -501,7 +514,7 @@ function start() {
         ${RUNC_CMD} exec ${name} ${OVNCTL_PATH} start_controller ${SSL_ARGS}
     done
 
-    configure-ovn $ovn_central $ovn_remote ${OVN_MONITOR_ALL}
+    configure-ovn $ovn_central $ovn_remote ${OVN_MONITOR_ALL} ${OVN_DP_TYPE}
 }
 
 function create_fake_vms() {
