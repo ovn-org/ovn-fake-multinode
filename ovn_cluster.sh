@@ -11,6 +11,7 @@ BASE_IMAGE="ovn/cinc"
 CENTRAL_IMAGE="ovn/ovn-multi-node"
 CHASSIS_IMAGE="ovn/ovn-multi-node"
 GW_IMAGE="ovn/ovn-multi-node"
+RELAY_IMAGE="ovn/ovn-multi-node"
 
 USE_OVN_RPMS="${USE_OVN_RPMS:-no}"
 EXTRA_OPTIMIZE="${EXTRA_OPTIMIZE:-no}"
@@ -45,6 +46,10 @@ IP_START=${IP_START:-170.168.0.2}
 
 OVN_DB_CLUSTER="${OVN_DB_CLUSTER:-no}"
 OVN_MONITOR_ALL="${OVN_MONITOR_ALL:-no}"
+
+RELAY_COUNT=${RELAY_COUNT:-0}
+RELAY_NAMES=( )
+RELAY_PREFIX="ovn-relay-"
 
 # Controls the type of OVS datapath to be used.
 # Possible values:
@@ -160,6 +165,9 @@ function stop() {
         else
             del-ovs-docker-ports ${CENTRAL_NAME}
         fi
+        for name in "${RELAY_NAMES[@]}"; do
+            del-ovs-docker-ports ${name}
+        done
         for name in "${GW_NAMES[@]}"; do
             del-ovs-docker-ports ${name}
         done
@@ -170,7 +178,7 @@ function stop() {
 
     echo "Stopping OVN cluster"
     # Delete the containers
-    for cid in $( ${RUNC_CMD} ps -qa --filter "name=${CENTRAL_NAME}|${GW_PREFIX}|${CHASSIS_PREFIX}" ); do
+    for cid in $( ${RUNC_CMD} ps -qa --filter "name=${CENTRAL_NAME}|${GW_PREFIX}|${CHASSIS_PREFIX}|${RELAY_PREFIX}" ); do
        stop-container ${cid}
     done
 }
@@ -216,6 +224,20 @@ function add-ovs-docker-ports() {
             ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
             ${OVS_DOCKER} add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
         done
+
+        if [ "$RELAY_COUNT" -gt 0 ]; then
+            relay_remotes=""
+            for name in "${RELAY_NAMES[@]}"; do
+                (( ip_index += 1))
+                ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
+                ${OVS_DOCKER} add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
+                relay_remotes=$relay_remotes",${REMOTE_PROT}:$ip:6642"
+            done
+            orig_remotes=$(cat _ovn_remote)
+            echo "${relay_remotes}" | cut -c 2- > _ovn_remote
+            echo "${orig_remotes}" > _ovn_remote_main_db
+        fi
+
     else
         if [ "$OVN_DB_CLUSTER" = "yes" ]; then
             (( ip_index += 2))
@@ -224,6 +246,11 @@ function add-ovs-docker-ports() {
         if [ "$GW_COUNT" -gt 0 ]; then
             (( ip_index += $GW_COUNT))
         fi
+
+        if [ "$RELAY_COUNT" -gt 0 ]; then
+            (( ip_index += $RELAY_COUNT))
+        fi
+
     fi
 
     for name in "${CHASSIS_NAMES[@]}"; do
@@ -240,6 +267,9 @@ function add-ovs-docker-ports() {
         else
             ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}
         fi
+        for name in "${RELAY_NAMES[@]}"; do
+            ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${name}
+        done
         for name in "${GW_NAMES[@]}"; do
             ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${name}
         done
@@ -336,7 +366,7 @@ function wait-containers() {
             else
                 [[ $(count-containers "${CENTRAL_NAME}") == "0" ]] && continue
             fi
-            for name in "${GW_NAMES[@]}"; do
+            for name in "${GW_NAMES[@]} ${RELAY_NAMES[@]}"; do
                 [[ $(count-containers "${name}") == "0" ]] && done="0" && break
             done
             [[ ${done} == "0" ]] && continue
@@ -456,6 +486,9 @@ function start() {
         for name in "${GW_NAMES[@]}"; do
             start-container "${GW_IMAGE}" "${name}"
         done
+        for name in "${RELAY_NAMES[@]}"; do
+            start-container "${RELAY_IMAGE}" "${name}"
+        done
     fi
 
     for name in "${CHASSIS_NAMES[@]}"; do
@@ -494,6 +527,22 @@ function start() {
 
         ${RUNC_CMD} exec ${central} ovn-sbctl set-connection p${REMOTE_PROT}:6642
         ${RUNC_CMD} exec ${central} ovn-sbctl set connection . inactivity_probe=180000
+
+        for name in "${RELAY_NAMES[@]}"; do
+            SSL_ARGS=
+            if [ "$ENABLE_SSL" == "yes" ]; then
+                SSL_ARGS="--private-key=${SSL_CERTS_PATH}/ovn-privkey.pem \
+                          --certificate=${SSL_CERTS_PATH}/ovn-cert.pem \
+                          --ca-cert=${SSL_CERTS_PATH}/pki/switchca/cacert.pem \
+                          --ssl-protocols=db:OVN_Southbound,SSL,ssl_protocols \
+                          --ssl-ciphers=db:OVN_Southbound,SSL,ssl_ciphers"
+            fi
+            ${RUNC_CMD} exec ${name} ovsdb-server -vconsole:off -vfile:info -vrelay:file:dbg \
+                --log-file=/var/log/ovn/ovsdb-server-sb.log --remote=punix:/var/run/ovn/ovnsb_db.sock \
+                --pidfile=/var/run/ovn/ovnsb_db.pid --unixctl=/var/run/ovn/ovnsb_db.ctl \
+                --detach --monitor --remote=db:OVN_Southbound,SB_Global,connections \
+                ${SSL_ARGS} relay:OVN_Southbound:$(cat _ovn_remote_main_db)
+        done
 
         for name in "${GW_NAMES[@]}"; do
             SSL_ARGS=
@@ -797,6 +846,11 @@ function run-command() {
         ${RUNC_CMD} exec $name $cmd ||:
     done
 
+    for name in "${RELAY_NAMES[@]}"; do
+        echo "Running command $cmd in container $name"
+        ${RUNC_CMD} exec $name $cmd ||:
+    done
+
     for name in "${CHASSIS_NAMES[@]}"; do
         echo "Running command $cmd in container $name"
         ${RUNC_CMD} exec $name $cmd ||:
@@ -849,6 +903,10 @@ case "${1:-""}" in
             GW_NAMES+=( "${GW_PREFIX}${i}" )
         done
 
+        for (( i=1; i<=RELAY_COUNT; i++ )); do
+            RELAY_NAMES+=( "${RELAY_PREFIX}${i}" )
+        done
+
         if [[ -n "${REMOVE_EXISTING_CLUSTER}" ]]; then
             stop
         fi
@@ -877,6 +935,10 @@ case "${1:-""}" in
         for (( i=1; i<=GW_COUNT; i++ )); do
             GW_NAMES+=( "${GW_PREFIX}${i}" )
         done
+
+        for (( i=1; i<=RELAY_COUNT; i++ )); do
+            RELAY_NAMES+=( "${RELAY_PREFIX}${i}" )
+        done
         stop
         ;;
     stop-chassis)
@@ -903,11 +965,16 @@ case "${1:-""}" in
             GW_NAMES+=( "${GW_PREFIX}${i}" )
         done
 
+        for (( i=1; i<=RELAY_COUNT; i++ )); do
+            RELAY_NAMES+=( "${RELAY_PREFIX}${i}" )
+        done
+
         set-ovn-remote $2 "yes"
         ;;
     set-chassis-ovn-remote)
         CHASSIS_NAMES=( "$2" )
         GW_NAMES=( )
+        RELAY_NAMES=( )
         CHASSIS_PREFIX=$2
         set-ovn-remote $3 "no"
         ;;
@@ -918,6 +985,10 @@ case "${1:-""}" in
 
         for (( i=1; i<=GW_COUNT; i++ )); do
             GW_NAMES+=( "${GW_PREFIX}${i}" )
+        done
+
+        for (( i=1; i<=RELAY_COUNT; i++ )); do
+            RELAY_NAMES+=( "${RELAY_PREFIX}${i}" )
         done
 
         shift;
