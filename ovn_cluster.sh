@@ -446,6 +446,64 @@ function start-db-cluster() {
     $SSL_ARGS start_northd
 }
 
+function is_ovsdb_etcd_mode() {
+    if [[ ! -z "$use_ovsdb_etcd" ]]; then
+        true
+    else
+        false
+    fi
+}
+
+# OVSDB-etcd variables
+ovsdb_etcd_members=${OVSDB_ETCD_MEMBERS:-"localhost:2479"}
+ovsdb_etcd_max_txn_ops=${OVSDB_ETCD_MAX_TXN_OPS:-"5120"}                        # etcd default is 128
+ovsdb_etcd_max_request_bytes=${OVSDB_ETCD_MAX_REQUEST_BYTES:-"157286400"}       # 150 MByte
+ovsdb_etcd_warning_apply_duration=${OVSDB_ETCD_WARNING_APPLY_DURATION:-"1s"}    # etcd default is 100ms
+ovsdb_etcd_election_timeout=${OVSDB_ETCD_ELECTION_TIMEOUT:-"1000"}              # etcd default
+ovsdb_etcd_quota_backend_bytes=${OVSDB_ETCD_QUOTA_BACKEND_BYTES:-"8589934592"}  # 8 GByte
+
+function start_etcd() {
+    echo "================= start etcd server ============================ "
+    /usr/local/bin/etcd --data-dir /etc/openvswitch/ \
+    --listen-peer-urls http://localhost:2480 \
+    --listen-client-urls http://localhost:2479 \
+    --advertise-client-urls http://localhost:2479 \
+    --max-txn-ops ${ovsdb_etcd_max_txn_ops} \
+    --max-request-bytes ${ovsdb_etcd_max_request_bytes} \
+    --experimental-txn-mode-write-with-shared-buffer=true \
+    --experimental-warning-apply-duration=${ovsdb_etcd_warning_apply_duration} \
+    --election-timeout=${ovsdb_etcd_election_timeout} \
+    --quota-backend-bytes=${ovsdb_etcd_quota_backend_bytes}
+}
+
+# OVN_NB_PORT - ovn north db port (default 6641)
+ovn_nb_port=${OVN_NB_PORT:-6641}
+# OVN_SB_PORT - ovn south db port (default 6642)
+ovn_sb_port=${OVN_SB_PORT:-6642}
+ovsdb_etcd_schemas_dir=${OVSDB_ETCD_SCHEMAS_DIR:-/root/ovsdb-etcd/schemas}
+ovsdb_etcd_prefix=${OVSDB_ETCD_PREFIX:-"ovsdb"}
+ovsdb_etcd_nb_log_level=${OVSDB_ETCD_NB_LOG_LEVEL:-"5"}
+ovsdb_etcd_sb_log_level=${OVSDB_ETCD_SB_LOG_LEVEL:-"5"}
+ovsdb_etcd_nb_unix_socket=${OVSDB_ETCD_NB_UNIX_SOCKET:-"/var/run/ovn/ovnnb_db.sock"}
+ovsdb_etcd_sb_unix_socket=${OVSDB_ETCD_SB_UNIX_SOCKET:-"/var/run/ovn/ovnsb_db.sock"}
+OVN_LOGDIR=/var/log/ovn
+
+function start_nb_ovsdb_etcd() {
+    echo "================= start nb-ovsdb-etcd server ============================ "
+    /root/ovsdb_etcd_server -logtostderr=false -log_file=${OVN_LOGDIR}/nb-ovsdb-etcd.log -v=${ovsdb_etcd_nb_log_level} -tcp-address=:${ovn_nb_port} \
+   -unix-address=${ovsdb_etcd_nb_unix_socket} -etcd-members=${ovsdb_etcd_members} -schema-basedir=${ovsdb_etcd_schemas_dir} \
+   -database-prefix=${ovsdb_etcd_prefix} -service-name=nb -schema-file=ovn-nb.ovsschema -pid-file=${pid_file} \
+   -load-server-data=false &
+}
+
+function start_sb_ovsdb_etcd() {
+    echo "================= start sb-ovsdb-etcd server ============================ "
+    /root/ovsdb_etcd_server -logtostderr=false -log_file=${OVN_LOGDIR}/sb-ovsdb-etcd.log -v=${ovsdb_etcd_sb_log_level} -tcp-address=:${ovn_sb_port} \
+    -unix-address=${ovsdb_etcd_sb_unix_socket} -etcd-members=${ovsdb_etcd_members} -schema-basedir=${ovsdb_etcd_schemas_dir} \
+    -database-prefix=${ovsdb_etcd_prefix} -service-name=sb -schema-file=ovn-sb.ovsschema -pid-file=${pid_file} \
+    -load-server-data=false &
+}
+
 function start() {
     echo "Starting OVN cluster"
     ovn_central=$1
@@ -510,7 +568,15 @@ function start() {
     # Start OVN db servers on central node
     if [ "$ovn_central" == "yes" ]; then
         central=${CENTRAL_NAME}
-        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+
+        if is_ovsdb_etcd_mode; then
+            start_nb_ovsdb_etcd
+            start_sb_ovsdb_etcd
+            start_etcd
+
+            ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} --ovn-manage-ovsdb=no start_northd
+
+        elif [ "$OVN_DB_CLUSTER" = "yes" ]; then
             start-db-cluster
             central=${CENTRAL_NAME}-1
         else
