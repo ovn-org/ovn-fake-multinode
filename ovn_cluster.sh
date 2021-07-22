@@ -18,7 +18,7 @@ EXTRA_OPTIMIZE="${EXTRA_OPTIMIZE:-no}"
 OS_IMAGE=${OS_IMAGE:-"fedora:31"}
 OS_IMAGE_PULL_RETRIES=${OS_IMAGE_PULL_RETRIES:-40}
 OS_IMAGE_PULL_INTERVAL=${OS_IMAGE_PULL_INTERVAL:-5}
-
+USE_OVSDB_ETCD=${USE_OVSDB_ETCD:-no}
 CENTRAL_NAME="ovn-central"
 CHASSIS_PREFIX="${CHASSIS_PREFIX:-ovn-chassis-}"
 GW_PREFIX="ovn-gw-"
@@ -60,6 +60,7 @@ RELAY_PREFIX="ovn-relay-"
 OVN_DP_TYPE="${OVN_DP_TYPE:-system}"
 
 ENABLE_SSL="${ENABLE_SSL:=yes}"
+ENABLE_ETCD="${ENABLE_ETCD:=no}"
 REMOTE_PROT=ssl
 
 if [ "$ENABLE_SSL" != "yes" ]; then
@@ -510,7 +511,15 @@ function start() {
     # Start OVN db servers on central node
     if [ "$ovn_central" == "yes" ]; then
         central=${CENTRAL_NAME}
-        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+        if [ "$ENABLE_ETCD" == "yes" ]; then
+            echo "Starting ovsdb-etcd in ${CENTRAL_NAME} container"
+            ${RUNC_CMD} exec --detach ${CENTRAL_NAME} bash -c "/run_ovsdb_etcd.sh"
+            sleep 2
+            ${RUNC_CMD} exec --detach ${CENTRAL_NAME} bash -c "/run_ovsdb_etcd_sb.sh"
+            ${RUNC_CMD} exec --detach ${CENTRAL_NAME} bash -c "/run_ovsdb_etcd_nb.sh"
+            ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} --ovn-manage-ovsdb=no --ovn-northd-log='-vconsole:dbg -vfile:dbg' start_northd
+
+        elif [ "$OVN_DB_CLUSTER" = "yes" ]; then
             start-db-cluster
             central=${CENTRAL_NAME}-1
         else
@@ -789,6 +798,7 @@ function build-images() {
     --build-arg OVN_SRC_PATH=ovn --build-arg USE_OVN_RPMS=${USE_OVN_RPMS} \
     --build-arg EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} \
     --build-arg INSTALL_UTILS_FROM_SOURCES=${INSTALL_UTILS_FROM_SOURCES} \
+    --build-arg USE_OVSDB_ETCD=${USE_OVSDB_ETCD} \
     -f  fedora/ovn/Dockerfile .
 }
 
