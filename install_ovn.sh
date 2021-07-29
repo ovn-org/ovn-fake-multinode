@@ -28,6 +28,7 @@ if [ "$use_ovn_rpm" = "yes" ]; then
     ls ovn*.rpm > /dev/null || exit 1
     yum install -y /*.rpm
 else
+    mkdir -p /root/ovsdb-etcd/schemas
     # get ovs source always from master as its needed as dependency
     cd /ovs
     # build and install
@@ -36,6 +37,7 @@ else
     --enable-ssl --disable-libcapng --enable-Werror CFLAGS="${cflags}"
     make -j$(($(nproc) + 1)) V=0
     make install
+    cp ./ovsdb/_server.ovsschema /root/ovsdb-etcd/schemas/
 
     cd /ovn
     # build and install
@@ -45,6 +47,8 @@ else
     CFLAGS="${cflags}"
     make -j$(($(nproc) + 1)) V=0
     make install
+    cp ./ovn-nb.ovsschema /root/ovsdb-etcd/schemas/
+    cp ./ovn-sb.ovsschema /root/ovsdb-etcd/schemas/
 fi
 
 # Generate SSL certificates.
