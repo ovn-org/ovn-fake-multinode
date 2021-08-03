@@ -22,7 +22,7 @@ if [[ "${USE_OVSDB_ETCD}" = "yes" ]]; then
     mkdir -p $HOME/go/src
     git clone https://github.com/udhos/update-golang.git
     pushd update-golang
-    sudo ./update-golang.sh
+    ./update-golang.sh
     popd
     rm -rf ./update-golang
     
