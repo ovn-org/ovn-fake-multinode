@@ -30,13 +30,14 @@ ovsdb_etcd_nb_log_level=${OVSDB_ETCD_NB_LOG_LEVEL:-"3"}
 ovsdb_etcd_nb_unix_socket=${OVSDB_ETCD_NB_UNIX_SOCKET:-"/var/run/ovn/ovnnb_db.sock"}
 OVN_LOGDIR=/var/log/ovn
 nb_pid_file=${OVN_LOGDIR}/ovnnb_etcd.pid
+nb_cpuprofile_file=${OVN_LOGDIR}/nb_cpuprofile.prof
 
 function start_nb_ovsdb_etcd() {
     echo "================= start nb-ovsdb-etcd server ============================ "
     /root/ovsdb_etcd_server -logtostderr=false -log_file=${OVN_LOGDIR}/nb-ovsdb-etcd.log -v=${ovsdb_etcd_nb_log_level} -tcp-address=:${ovn_nb_port} \
    -unix-address=${ovsdb_etcd_nb_unix_socket} -etcd-members=${ovsdb_etcd_members} -schema-basedir=${ovsdb_etcd_schemas_dir} \
    -database-prefix=${ovsdb_etcd_prefix} -service-name=nb -schema-file=ovn-nb.ovsschema -pid-file=${nb_pid_file} \
-   -load-server-data=false
+   -load-server-data=false -cpu-profile=${nb_cpuprofile_file}
 }
 
 start_nb_ovsdb_etcd &> /var/log/ovn/nb-ovsdb-etcd-start.log &
