@@ -30,13 +30,14 @@ ovsdb_etcd_sb_log_level=${OVSDB_ETCD_SB_LOG_LEVEL:-"3"}
 ovsdb_etcd_sb_unix_socket=${OVSDB_ETCD_SB_UNIX_SOCKET:-"/var/run/ovn/ovnsb_db.sock"}
 OVN_LOGDIR=/var/log/ovn
 sb_pid_file=${OVN_LOGDIR}/ovnsb_etcd.pid
+sb_cpuprofile_file=${OVN_LOGDIR}/sb_cpuprofile.prof
 
 function start_sb_ovsdb_etcd() {
     echo "================= start sb-ovsdb-etcd server ============================ "
     /root/ovsdb_etcd_server -logtostderr=false -log_file=${OVN_LOGDIR}/sb-ovsdb-etcd.log -v=${ovsdb_etcd_sb_log_level} -tcp-address=:${ovn_sb_port} \
     -unix-address=${ovsdb_etcd_sb_unix_socket} -etcd-members=${ovsdb_etcd_members} -schema-basedir=${ovsdb_etcd_schemas_dir} \
     -database-prefix=${ovsdb_etcd_prefix} -service-name=sb -schema-file=ovn-sb.ovsschema -pid-file=${sb_pid_file} \
-    -load-server-data=false
+    -load-server-data=false -cpu-profile=${sb_cpuprofile_file}
 }
 
 start_sb_ovsdb_etcd &> /var/log/ovn/sb-ovsdb-etcd-start.log &
