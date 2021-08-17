@@ -517,7 +517,7 @@ function start() {
             sleep 2
             ${RUNC_CMD} exec --detach ${CENTRAL_NAME} bash -c "/run_ovsdb_etcd_sb.sh"
             ${RUNC_CMD} exec --detach ${CENTRAL_NAME} bash -c "/run_ovsdb_etcd_nb.sh"
-            ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} --ovn-manage-ovsdb=no --ovn-northd-log='-vconsole:dbg -vfile:dbg' start_northd
+            ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} --ovn-manage-ovsdb=no start_northd
 
         elif [ "$OVN_DB_CLUSTER" = "yes" ]; then
             start-db-cluster
