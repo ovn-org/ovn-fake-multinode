@@ -99,8 +99,11 @@ function count-gw() {
 function count-containers() {
   local name=$1
   local filter=${2:-}
-
   local count=0
+
+  # remove any whitespace from the container name
+  name=$(echo $name | sed 's/ //g')
+
   for cid in $( ${RUNC_CMD} ps -qa --filter "name=${name}" $filter); do
     (( count += 1 ))
   done
