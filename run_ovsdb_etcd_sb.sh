@@ -37,7 +37,7 @@ function start_sb_ovsdb_etcd() {
     /root/ovsdb_etcd_server -logtostderr=false -log_file=${OVN_LOGDIR}/sb-ovsdb-etcd.log -v=${ovsdb_etcd_sb_log_level} -tcp-address=:${ovn_sb_port} \
     -unix-address=${ovsdb_etcd_sb_unix_socket} -etcd-members=${ovsdb_etcd_members} -schema-basedir=${ovsdb_etcd_schemas_dir} \
     -database-prefix=${ovsdb_etcd_prefix} -service-name=sb -schema-file=ovn-sb.ovsschema -pid-file=${sb_pid_file} \
-    -load-server-data=false -cpu-profile=${sb_cpuprofile_file}
+    -load-server-data=false -cpu-profile=${sb_cpuprofile_file} -keepalive-time=6s -keepalive-timeout=20s
 }
 
 start_sb_ovsdb_etcd &> /var/log/ovn/sb-ovsdb-etcd-start.log &

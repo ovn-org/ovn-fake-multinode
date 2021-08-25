@@ -17,7 +17,7 @@ set -o errexit
 
 # OVSDB-etcd variables
 ovsdb_etcd_members=${OVSDB_ETCD_MEMBERS:-"localhost:2479"}
-ovsdb_etcd_max_txn_ops=${OVSDB_ETCD_MAX_TXN_OPS:-"5120"}                        # etcd default is 128
+ovsdb_etcd_max_txn_ops=${OVSDB_ETCD_MAX_TXN_OPS:-"102400"}                        # etcd default is 128
 ovsdb_etcd_max_request_bytes=${OVSDB_ETCD_MAX_REQUEST_BYTES:-"157286400"}       # 150 MByte
 ovsdb_etcd_warning_apply_duration=${OVSDB_ETCD_WARNING_APPLY_DURATION:-"1s"}    # etcd default is 100ms
 ovsdb_etcd_election_timeout=${OVSDB_ETCD_ELECTION_TIMEOUT:-"1000"}              # etcd default
@@ -47,7 +47,9 @@ function start_etcd() {
     --experimental-txn-mode-write-with-shared-buffer=true \
     --experimental-warning-apply-duration=${ovsdb_etcd_warning_apply_duration} \
     --election-timeout=${ovsdb_etcd_election_timeout} \
-    --quota-backend-bytes=${ovsdb_etcd_quota_backend_bytes}
+    --quota-backend-bytes=${ovsdb_etcd_quota_backend_bytes} \
+    --grpc-keepalive-timeout=60s --auto-compaction-retention=5m \
+    --log-level=error
 }
 
 start_etcd &> /var/log/ovn/etcd.log &
