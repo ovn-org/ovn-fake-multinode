@@ -725,7 +725,7 @@ EOF
     ip netns exec ovnfake-ext ip addr add 172.16.0.50/24 dev ovnfake-ext
     ip netns exec ovnfake-ext ip addr add 3000::b/64 dev ovnfake-ext
     ip netns exec ovnfake-ext ip link set ovnfake-ext up
-    ip netns exec ovnfake-ext ip route add default via 172.16.0.1
+    ip netns exec ovnfake-ext ip route add default via 172.16.0.100
 
     echo "Creating a fake VM in the ovs bridge ${OVN_BR}"
     ip netns add ovnfake-int
