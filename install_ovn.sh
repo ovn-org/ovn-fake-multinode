@@ -29,7 +29,7 @@ if [ "$use_ovn_rpm" = "yes" ]; then
     yum install -y /*.rpm
 else
     mkdir -p /root/ovsdb-etcd/schemas
-    # get ovs source always from master as its needed as dependency
+    # get ovs source always, as its needed as dependency
     cd /ovs
     # build and install
     ./boot.sh
