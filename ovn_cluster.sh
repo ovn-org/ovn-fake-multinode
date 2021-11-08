@@ -116,7 +116,7 @@ function check-no-containers {
   local filter=${2:-}
   local message="${3:-Existing cluster parts}"
 
-  local existing_nodes existing_master
+  local existing_chassis existing_central existing_gws
   existing_chassis=$(count-chassis "${filter}")
   existing_central=$(count-central "${filter}")
   existing_gws=$(count-gw "${filter}")
