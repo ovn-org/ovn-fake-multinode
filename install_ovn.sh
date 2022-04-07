@@ -26,7 +26,7 @@ fi
 
 if [ "$use_ovn_rpm" = "yes" ]; then
     ls ovn*.rpm > /dev/null || exit 1
-    yum install -y /*.rpm
+    dnf install -y /*.rpm
 else
     mkdir -p /root/ovsdb-etcd/schemas
     # get ovs source always, as its needed as dependency
@@ -61,7 +61,7 @@ $OVS_PKI req+sign ovn switch
 popd
 
 # remove unused packages to make the container light weight.
-yum autoremove -y
+dnf autoremove -y
 
 
 rm -rf /ovs /ovn

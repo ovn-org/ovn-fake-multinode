@@ -1,7 +1,7 @@
 
-image_name=${1:-"fedora:31"}
+image_name=${1:-"fedora:35"}
 
-yum -y install systemd
+dnf -y install systemd
 
 systemctl mask \
 	auditd.service\
@@ -63,39 +63,13 @@ EOF
 	./configure && make && make install
 	popd
 
-
-elif echo $image_name | grep ubi7
-then
-
-	# add needed repo
-	rpm -ivh https://download-cc-rdu01.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-	cat > /etc/yum.repos.d/centos-os.repo <<EOF
-[centos-os]
-name=centos-os
-baseurl=http://mirror.centos.org/centos/7/os/x86_64/
-enabled=1
-gpgcheck=0
-skip_if_unavailable=1
-EOF
-	yum -y --skip-broken install automake make gcc autoconf openssl-devel \
-		python3 libtool openssl python3-pip \
-		net-tools.x86_64 uuid.x86_64 iproute.x86_64 dnf-utils libreswan \
-		conntrack-tools nmap ninja-build meson libcap-devel gettext-devel \
-		libxslt git iproute procps-ng
-	yum remove -y iputils
-
-	# install iputils from source, as -W 0.1 is not supported
-	git clone https://github.com/iputils/iputils.git
-	pushd iputils
-	./configure && make && make install
-	popd
 else
 	systemctl mask docker-storage-setup.service
-	yum install docker pacemaker pcs -y --skip-broken
+	dnf install docker pacemaker pcs -y --skip-broken
 	systemctl enable docker.service
 	systemctl enable pcsd.service
 
-	yum -y --skip-broken install automake make gcc autoconf openssl-devel \
+	dnf -y --skip-broken install automake make gcc autoconf openssl-devel \
 		python3 libtool openssl python3-pip \
 		net-tools.x86_64 uuid.x86_64 iproute.x86_64 dnf-utils libreswan \
 		conntrack-tools nmap iputils which dhclient
@@ -107,7 +81,7 @@ else
 	/tmp/generate_dhclient_script_for_fullstack.sh /
 fi
 
-yum -y --skip-broken install\
+dnf -y --skip-broken install\
 	glibc-langpack-en\
 	iptables\
 	openssh-clients\

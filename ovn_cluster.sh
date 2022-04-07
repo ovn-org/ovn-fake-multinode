@@ -15,7 +15,7 @@ RELAY_IMAGE="ovn/ovn-multi-node"
 
 USE_OVN_RPMS="${USE_OVN_RPMS:-no}"
 EXTRA_OPTIMIZE="${EXTRA_OPTIMIZE:-no}"
-OS_IMAGE=${OS_IMAGE:-"quay.io/fedora/fedora:31-x86_64"}
+OS_IMAGE=${OS_IMAGE:-"quay.io/fedora/fedora:35"}
 OS_IMAGE_PULL_RETRIES=${OS_IMAGE_PULL_RETRIES:-40}
 OS_IMAGE_PULL_INTERVAL=${OS_IMAGE_PULL_INTERVAL:-5}
 USE_OVSDB_ETCD=${USE_OVSDB_ETCD:-no}
@@ -790,12 +790,7 @@ function build-images() {
     sed -i 's/OOMScoreAdjust=-900//' ./dbus.service 2>/dev/null || :
 
     os-image-pull
-    if echo $OS_IMAGE | grep ubi7
-    then
-        ${RUNC_CMD} build -t ovn/cinc --build-arg OS_IMAGE=${OS_IMAGE} -f fedora/cinc/rhel7-Dockerfile .
-    else
-        ${RUNC_CMD} build -t ovn/cinc --build-arg OS_IMAGE=${OS_IMAGE} -f fedora/cinc/Dockerfile .
-    fi
+    ${RUNC_CMD} build -t ovn/cinc --build-arg OS_IMAGE=${OS_IMAGE} -f fedora/cinc/Dockerfile .
 
     ${RUNC_CMD} build -t ovn/ovn-multi-node --build-arg OVS_SRC_PATH=ovs \
     --build-arg OVN_SRC_PATH=ovn --build-arg USE_OVN_RPMS=${USE_OVN_RPMS} \
