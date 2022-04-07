@@ -1,0 +1,30 @@
+name: CI
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  basic:
+    env:
+      RUN_INTEG_TESTS: 1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download ovn-fake-multinode
+        uses: actions/checkout@v3
+        with:
+          path: multinode
+      - name: Download OVN master
+        uses: actions/checkout@v3
+        with:
+          repository: ovn-org/ovn
+          path: ovn
+          fetch-depth: 1
+          submodules: true
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install podman
+      - name: Run itegration tests
+        run: ls $GITHUB_WORKSPACE
