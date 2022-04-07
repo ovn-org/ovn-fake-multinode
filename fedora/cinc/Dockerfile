@@ -1,21 +1,8 @@
 #
-# Image configured with systemd and docker-in-docker.  Useful for
+# Image configured with systemd. Useful for
 # simulating multinode deployments.
 #
 # The standard name for this image is ovn/cinc
-#
-# Notes:
-#
-#  - disable SELinux on the docker host (not compatible with dind)
-#
-#  - to use the overlay graphdriver, ensure the overlay module is
-#    installed on the docker host
-#
-#      $ modprobe overlay
-#
-#  - run with --privileged
-#
-#      $ docker run -d --privileged openshift/dind
 #
 
 ARG OS_IMAGE
@@ -27,8 +14,6 @@ ARG OS_IMAGE
 # Fix 'WARNING: terminal is not fully functional' when TERM=dumb
 ENV TERM=xterm
 
-
-
 VOLUME ["/run", "/tmp"]
 
 STOPSIGNAL SIGRTMIN+3
@@ -37,25 +22,10 @@ COPY fedora/cinc/generate_dhclient_script_for_fullstack.sh /tmp/generate_dhclien
 COPY fedora/cinc/install_pkg.sh /install_pkg.sh
 RUN /install_pkg.sh $OS_IMAGE
 
-
 COPY dbus.service /etc/systemd/system/
-
 
 RUN pip3 -qq install six
 
-
 RUN mkdir -p /usr/local/bin
-COPY dind-setup.sh /usr/local/bin/
-COPY dind-setup.service /etc/systemd/system/
-RUN systemctl enable dind-setup.service
 
-VOLUME ["/var/lib/docker"]
-
-# Hardlink init to another name to avoid having oci-systemd-hooks
-# detect containers using this image as requiring read-only cgroup
-# mounts.  containers running docker need to be run with --privileged
-# to ensure cgroups are mounted with read-write permissions.
-RUN ln /usr/sbin/init /usr/sbin/dind_init
-
-COPY dind_wrapper_init /usr/sbin/dind_wrapper_init
-CMD ["/usr/sbin/dind_wrapper_init"]
+CMD ["/usr/sbin/init"]
