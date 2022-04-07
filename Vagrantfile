@@ -26,7 +26,7 @@ Vagrant.configure(2) do |config|
     vm_cpus = ENV['VM_CPUS'] || '4'
 
     config.vm.hostname = "ovnhostvm"
-    config.vm.box = "centos/8"
+    config.vm.box = "generic/rocky8"
     config.vm.box_check_update = false
 
     # config.vm.synced_folder "#{ENV['PWD']}", "/vagrant", sshfs_opts_append: "-o nonempty", disabled: false, type: "sshfs"
