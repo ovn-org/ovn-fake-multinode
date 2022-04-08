@@ -30,7 +30,7 @@ dnf -y --skip-broken install \
   glibc-langpack-en \
   hostname \
   iproute \
-  iproute.x86_64 \
+  iputils \
   iptables \
   libcap-devel \
   libreswan \
