@@ -29,9 +29,9 @@ if [ "$use_ovn_rpm" = "yes" ]; then
     dnf install -y /*.rpm
 else
     mkdir -p /root/ovsdb-etcd/schemas
-    # get ovs source always, as its needed as dependency
+
+    # Build OVS binaries and install them.
     cd /ovs
-    # build and install
     ./boot.sh
     ./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
     --enable-ssl --disable-libcapng --enable-Werror CFLAGS="${cflags}"
@@ -39,11 +39,23 @@ else
     make install
     cp ./ovsdb/_server.ovsschema /root/ovsdb-etcd/schemas/
 
+    # Build OVS libraries from submodule, needed by OVN.
+    cd /ovn
+    rm -rf ./ovs
+    git submodule update --init
+
+    cd ./ovs
+    # build. Note: no explicit install is needed here.
+    ./boot.sh
+    ./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
+    --enable-ssl --disable-libcapng --enable-Werror CFLAGS="${cflags}"
+    make -j$(($(nproc) + 1)) V=0
+
     cd /ovn
     # build and install
     ./boot.sh
     ./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
-    --enable-ssl --with-ovs-source=/ovs/ --with-ovs-build=/ovs/ \
+    --enable-ssl \
     CFLAGS="${cflags}"
     make -j$(($(nproc) + 1)) V=0
     make install
