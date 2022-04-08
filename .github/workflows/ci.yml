@@ -1,0 +1,36 @@
+name: CI
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  basic:
+    env:
+      RUNC_CMD: podman
+      OVN_SRC_PATH: ovn_git
+      OVS_SRC_PATH: ovn_git/ovs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download ovn-fake-multinode
+        uses: actions/checkout@v3
+      - name: Download OVN main
+        uses: actions/checkout@v3
+        with:
+          repository: ovn-org/ovn
+          path: ovn_git
+          fetch-depth: 1
+          submodules: true
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install podman openvswitch-switch
+      - name: Build images
+        run: sudo -E ./ovn_cluster.sh build
+      - name: Start basic cluster
+        run: sudo -E ./ovn_cluster.sh start
+      - name: Run basic test script
+        run: sudo ./.ci/test_basic.sh
+      - name: Stop cluster
+        run: sudo -E ./ovn_cluster.sh stop
