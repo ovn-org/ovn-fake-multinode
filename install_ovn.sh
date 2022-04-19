@@ -42,7 +42,7 @@ else
     # Build OVS libraries from submodule, needed by OVN.
     cd /ovn
     rm -rf ./ovs
-    git submodule update --init
+    git submodule update --init --depth 1
 
     cd ./ovs
     # build. Note: no explicit install is needed here.
@@ -75,5 +75,10 @@ popd
 # remove unused packages to make the container light weight.
 dnf autoremove -y
 
-
-rm -rf /ovs /ovn
+# Clean all object files
+cd /ovs
+make distclean
+cd /ovn
+make distclean
+cd ./ovs
+make distclean
