@@ -53,4 +53,5 @@ dnf -y --skip-broken install \
   resource-agents \
   tcpdump \
   uuid.x86_64 \
-  which
+  which  \
+  initscripts
