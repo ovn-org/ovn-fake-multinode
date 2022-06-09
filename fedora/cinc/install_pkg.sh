@@ -55,3 +55,7 @@ dnf -y --skip-broken install \
   uuid.x86_64 \
   which  \
   initscripts
+
+# Generate variation of dhclient-script that we can use for fake vm namespaces
+mkdir -pv /bin
+/tmp/generate_dhclient_script_for_fullstack.sh /
