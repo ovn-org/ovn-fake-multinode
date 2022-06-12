@@ -50,6 +50,7 @@ dnf -y --skip-broken install \
   procps-ng \
   python3 \
   python3-pip \
+  python3-psutil \
   resource-agents \
   tcpdump \
   uuid.x86_64 \
