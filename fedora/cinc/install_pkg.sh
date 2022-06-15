@@ -57,6 +57,9 @@ dnf -y --skip-broken install \
   which  \
   initscripts
 
-# Generate variation of dhclient-script that we can use for fake vm namespaces
+# Generate variation of dhclient-script that we can use for fake vm namespaces.
+# dhclient-script might not be available though, so don't fail if that's
+# the case.
 mkdir -pv /bin
-/tmp/generate_dhclient_script_for_fullstack.sh /
+/tmp/generate_dhclient_script_for_fullstack.sh / || \
+    echo "Failed to generate dhclient script for fullstack!"
