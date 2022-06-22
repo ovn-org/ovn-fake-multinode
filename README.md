@@ -75,6 +75,15 @@ ping -i 1 -c 1 -w 1 170.168.0.2 >/dev/null && \
 exit
 ```
 
+### Pre-provisioning NB and/or SB databases.
+It's sometime useful to be able to start up a cluster with pre-existing
+OVN NB and/or SB databases. For example, when debugging an issue from
+a real production cluster. In order to achieve that the `OVN_NBDB_SRC
+and `OVN_SBDB_SRC` variables can be used:
+```
+OVN_NBDB_SRC=some-nb.db OVN_SBDB_SRC=some-sb.db ./ovn_cluster.sh start
+```
+
 ## Vagrant based VM
 
 To deploy a VM that automatically performs the steps above as part of

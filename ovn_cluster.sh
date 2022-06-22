@@ -74,6 +74,9 @@ SSL_CERTS_PATH="/opt/ovn"
 FAKENODE_MNT_DIR="${FAKENODE_MNT_DIR:-/tmp/ovn-multinode}"
 INSTALL_UTILS_FROM_SOURCES="${INSTALL_UTILS_FROM_SOURCES:-no}"
 
+OVN_NBDB_SRC=${OVN_NBDB_SRC}
+OVN_SBDB_SRC=${OVN_SBDB_SRC}
+
 function check-selinux() {
   if [[ "$(getenforce)" = "Enforcing" ]]; then
     >&2 echo "Error: This script is not compatible with SELinux enforcing mode."
@@ -382,6 +385,21 @@ function wait-containers() {
     done
 }
 
+# Provisions a NB or SB db file on the central nodes.
+# Usage: provision-db-file nb|sb <source-db-file>
+function provision-db-file() {
+    local db=$1
+    local src=$2
+
+    if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+        ${RUNC_CMD} cp ${src} ${CENTRAL_NAME}-1:/etc/ovn/ovn${db}_db.db
+        ${RUNC_CMD} cp ${src} ${CENTRAL_NAME}-2:/etc/ovn/ovn${db}_db.db
+        ${RUNC_CMD} cp ${src} ${CENTRAL_NAME}-3:/etc/ovn/ovn${db}_db.db
+    else
+        ${RUNC_CMD} cp ${src} ${CENTRAL_NAME}:/etc/ovn/ovn${db}_db.db
+    fi
+}
+
 # Starts OVN dbs RAFT cluster on ovn-central-1, ovn-central-2 and ovn-central-3
 # containers.
 function start-db-cluster() {
@@ -513,6 +531,14 @@ function start() {
 
     # Start OVN db servers on central node
     if [ "$ovn_central" == "yes" ]; then
+        if [ -n "${OVN_NBDB_SRC}" ]; then
+            provision-db-file nb ${OVN_NBDB_SRC}
+        fi
+
+        if [ -n "${OVN_SBDB_SRC}" ]; then
+            provision-db-file sb ${OVN_SBDB_SRC}
+        fi
+
         central=${CENTRAL_NAME}
         if [ "$ENABLE_ETCD" == "yes" ]; then
             echo "Starting ovsdb-etcd in ${CENTRAL_NAME} container"
