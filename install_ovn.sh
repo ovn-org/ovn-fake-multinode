@@ -34,7 +34,7 @@ else
     cd /ovs
     ./boot.sh
     ./configure --localstatedir="/var" --sysconfdir="/etc" --prefix="/usr" \
-    --enable-ssl --disable-libcapng --enable-Werror CFLAGS="${cflags}"
+    --enable-ssl --disable-libcapng --enable-Werror --enable-shared CFLAGS="${cflags}"
     make -j$(($(nproc) + 1)) V=0
     make install
     cp ./ovsdb/_server.ovsschema /root/ovsdb-etcd/schemas/
@@ -71,6 +71,18 @@ $OVS_PKI init
 pushd /opt/ovn
 $OVS_PKI req+sign ovn switch
 popd
+
+# Install python IDL
+dnf install -y python3-devel
+pushd /opt/ovn
+cp -r /ovs/python .
+pushd python
+python3 setup.py build_ext -I /ovs/include -L /ovs/lib/.libs
+so_file=$(find build -name _json*.so)
+cp "$so_file" ovs/
+pip install -e .
+popd #python
+popd #/opt/ovn
 
 # remove unused packages to make the container light weight.
 dnf autoremove -y
