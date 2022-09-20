@@ -76,9 +76,11 @@ popd
 dnf autoremove -y
 
 # Clean all object files
-cd /ovs
-make distclean
-cd /ovn
-make distclean
-cd ./ovs
-make distclean
+if [ "$use_ovn_rpm" = "no" ]; then
+    cd /ovs
+    make distclean
+    cd /ovn
+    make distclean
+    cd ./ovs
+    make distclean
+fi
