@@ -80,7 +80,7 @@ pushd python
 python3 setup.py build_ext -I /ovs/include -L /ovs/lib/.libs
 so_file=$(find build -name _json*.so)
 cp "$so_file" ovs/
-pip install -e .
+python3 -m pip install -e .
 popd #python
 popd #/opt/ovn
 
