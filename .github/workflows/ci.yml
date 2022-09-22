@@ -11,6 +11,8 @@ jobs:
       RUNC_CMD: podman
       OVN_SRC_PATH: ovn_git
       OVS_SRC_PATH: ovn_git/ovs
+      # https://github.com/actions/runner-images/issues/6282
+      XDG_RUNTIME_DIR: ''
     runs-on: ubuntu-latest
     steps:
       - name: Download ovn-fake-multinode
