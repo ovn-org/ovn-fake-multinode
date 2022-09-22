@@ -816,14 +816,15 @@ function build-images() {
     sed -i 's/OOMScoreAdjust=-900//' ./dbus.service 2>/dev/null || :
 
     os-image-pull
-    ${RUNC_CMD} build -t ovn/cinc --build-arg OS_IMAGE=${OS_IMAGE} -f fedora/cinc/Dockerfile .
+    ${RUNC_CMD} build -t ovn/cinc --build-arg OS_IMAGE=${OS_IMAGE} \
+        -f fedora/cinc/Dockerfile . || exit 1
 
     ${RUNC_CMD} build -t ovn/ovn-multi-node --build-arg OVS_SRC_PATH=ovs \
     --build-arg OVN_SRC_PATH=ovn --build-arg USE_OVN_RPMS=${USE_OVN_RPMS} \
     --build-arg EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} \
     --build-arg INSTALL_UTILS_FROM_SOURCES=${INSTALL_UTILS_FROM_SOURCES} \
     --build-arg USE_OVSDB_ETCD=${USE_OVSDB_ETCD} \
-    -f  fedora/ovn/Dockerfile .
+    -f  fedora/ovn/Dockerfile . || exit 1
 }
 
 function check-for-ovn-rpms() {
