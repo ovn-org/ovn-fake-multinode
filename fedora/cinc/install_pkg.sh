@@ -49,6 +49,7 @@ dnf -y --skip-broken install \
   perf \
   procps-ng \
   python3 \
+  python3-devel \
   python3-pip \
   python3-psutil \
   resource-agents \

@@ -40,7 +40,6 @@ else
     cp ./ovsdb/_server.ovsschema /root/ovsdb-etcd/schemas/
 
     # Install python IDL with built-in C extensions.
-    dnf install -y python3-devel python3-wheel
     pushd /ovs/python
     pkgcfg_libs="`pkg-config --libs --static libopenvswitch`"
     enable_shared=no \
