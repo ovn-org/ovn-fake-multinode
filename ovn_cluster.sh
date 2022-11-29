@@ -7,11 +7,10 @@ set -o errexit
 
 RUNC_CMD="${RUNC_CMD:-docker}"
 
-BASE_IMAGE="ovn/cinc"
-CENTRAL_IMAGE="ovn/ovn-multi-node"
-CHASSIS_IMAGE="ovn/ovn-multi-node"
-GW_IMAGE="ovn/ovn-multi-node"
-RELAY_IMAGE="ovn/ovn-multi-node"
+CENTRAL_IMAGE=${CENTRAL_IMAGE:-"ovn/ovn-multi-node:latest"}
+CHASSIS_IMAGE=${CHASSIS_IMAGE:-"ovn/ovn-multi-node:latest"}
+GW_IMAGE=${GW_IMAGE:-"ovn/ovn-multi-node:latest"}
+RELAY_IMAGE=${RELAY_IMAGE:-"ovn/ovn-multi-node:latest"}
 
 USE_OVN_RPMS="${USE_OVN_RPMS:-no}"
 EXTRA_OPTIMIZE="${EXTRA_OPTIMIZE:-no}"
