@@ -7,11 +7,10 @@ set -o errexit
 
 RUNC_CMD="${RUNC_CMD:-docker}"
 
-BASE_IMAGE="ovn/cinc"
-CENTRAL_IMAGE="ovn/ovn-multi-node"
-CHASSIS_IMAGE="ovn/ovn-multi-node"
-GW_IMAGE="ovn/ovn-multi-node"
-RELAY_IMAGE="ovn/ovn-multi-node"
+CENTRAL_IMAGE=${CENTRAL_IMAGE:-"ovn/ovn-multi-node:latest"}
+CHASSIS_IMAGE=${CHASSIS_IMAGE:-"ovn/ovn-multi-node:latest"}
+GW_IMAGE=${GW_IMAGE:-"ovn/ovn-multi-node:latest"}
+RELAY_IMAGE=${RELAY_IMAGE:-"ovn/ovn-multi-node:latest"}
 
 USE_OVN_RPMS="${USE_OVN_RPMS:-no}"
 EXTRA_OPTIMIZE="${EXTRA_OPTIMIZE:-no}"
@@ -707,11 +706,14 @@ create_fake_vm() {
     ipv6_addr=\$7
     ipv6_gw=\$8
     ip netns add \$name
-    ovs-vsctl \
-      -- add-port br-int \$name \
-      -- set interface \$name type=internal \
-      -- set Interface \$name external_ids:iface-id=\$iface_id
+    ip link add \$name-p type veth peer name \$name
     ip link set \$name netns \$name
+    ip netns exec \$name ip link set lo up
+    ip link set \$name-p up
+
+    ovs-vsctl \
+      -- add-port br-int \$name-p \
+      -- set Interface \$name-p external_ids:iface-id=\$iface_id
     ip netns exec \$name ip link set lo up
     [ -n "\$mac" ] && ip netns exec \$name ip link set \$name address \$mac
     if [ "\$ip" == "dhcp" ]; then
