@@ -1,0 +1,56 @@
+name: ovn-fake-multinode-docker-images
+
+on:
+  push:
+    branches: [ master ]
+
+
+env:
+  GO_VERSION: 1.18.4
+  REGISTRY: ghcr.io 
+  OWNER: ovn-org
+  REPOSITORY: ovn-fake-multinode 
+  FEDORA_IMAGE_NAME: ovn-multi-node
+  FEDORA_BASE_IMAGE_NAME: ovn-multinode-cinc
+
+jobs:
+  build:
+    name: Build Images
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v3
+
+    - name: Log in to the GH Container registry
+      uses: docker/login-action@v1.12.0
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@master
+      with:
+        platforms: all
+
+    - name: Set up Docker Buildx
+      id: buildx
+      uses: docker/setup-buildx-action@master
+
+    - name: Extract metadata (tags, labels) for fedora ovn-multinode base image
+      id: meta-fedora-base
+      uses: docker/metadata-action@v3.6.2
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.REPOSITORY }}/${{ env.FEDORA_BASE_IMAGE_NAME }}
+
+    - name: Build and push Fedora based multinode base image
+      uses: docker/build-push-action@v2.9.0
+      with:
+        builder: ${{ steps.buildx.outputs.name }}
+        context: ./fedora/cinc
+        file: ./fedora/cinc/Dockerfile
+        push: true
+        build-args: OS_IMAGE=fedora:36
+        platforms: linux/amd64,linux/arm64
+        tags: ${{ steps.meta-fedora-base.outputs.tags }}
+        labels: ${{ steps.meta-fedora-base.outputs.labels }}
