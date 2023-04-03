@@ -32,6 +32,7 @@ dnf -y --skip-broken install \
   iproute \
   iputils \
   iptables \
+  js-d3-flame-graph \
   libcap-devel \
   libreswan \
   libtool \
