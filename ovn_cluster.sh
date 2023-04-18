@@ -700,11 +700,12 @@ create_fake_vm() {
     iface_id=\$1
     name=\$2
     mac=\$3
-    ip=\$4
-    mask=\$5
-    gw=\$6
-    ipv6_addr=\$7
-    ipv6_gw=\$8
+    mtu=\$4
+    ip=\$5
+    mask=\$6
+    gw=\$7
+    ipv6_addr=\$8
+    ipv6_gw=\$9
     ip netns add \$name
     ip link add \$name-p type veth peer name \$name
     ip link set \$name netns \$name
@@ -716,6 +717,7 @@ create_fake_vm() {
       -- set Interface \$name-p external_ids:iface-id=\$iface_id
     ip netns exec \$name ip link set lo up
     [ -n "\$mac" ] && ip netns exec \$name ip link set \$name address \$mac
+    ip netns exec \$name ip link set \$name mtu \$mtu
     if [ "\$ip" == "dhcp" ]; then
       ip netns exec \$name ip link set \$name up
       #ip netns exec \$name dhclient -sf /bin/fullstack-dhclient-script --no-pid -1 -v --timeout 10 \$name
@@ -735,14 +737,14 @@ EOF
     chmod 0755 ${FAKENODE_MNT_DIR}/create_fake_vm.sh
 
     echo "Creating a fake VM in "${CHASSIS_NAMES[0]}" for logical port - sw0-port1"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 1400 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
     echo "Creating a fake VM in "${CHASSIS_NAMES[1]}" for logical port - sw1-port1"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[1]}" bash /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[1]}" bash /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1400 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
     echo "Creating a fake VM in "${CHASSIS_NAMES[0]}" for logical port - sw0-port3 (using dhcp)"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw0-port3 sw0p3 50:54:00:00:00:05 dhcp
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw0-port3 sw0p3 50:54:00:00:00:05 1400 dhcp
     echo "Creating a fake VM in "${CHASSIS_NAMES[1]}" for logical port - sw0-port4 (using dhcp)"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[1]}" bash /data/create_fake_vm.sh sw0-port4 sw0p4 50:54:00:00:00:06 dhcp
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[1]}" bash /data/create_fake_vm.sh sw0-port4 sw0p4 50:54:00:00:00:06 1400 dhcp
 
     echo "Creating a fake VM in the host bridge ${OVN_EXT_BR}"
     ip netns add ovnfake-ext
