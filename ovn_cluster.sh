@@ -67,6 +67,7 @@ if [ "$ENABLE_SSL" != "yes" ]; then
 fi
 
 CREATE_FAKE_VMS="${CREATE_FAKE_VMS:-yes}"
+IPV6_UNDERLAY="${IPV6_UNDERLAY:-no}"
 
 SSL_CERTS_PATH="/opt/ovn"
 
@@ -210,19 +211,37 @@ function add-ovs-docker-ports() {
             ip1=$ip
             ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME}-1 --ipaddress=${ip1}/${cidr}
             echo $ip1 > _ovn_central_1
+            ip61=$(${RUNC_CMD} exec ${CENTRAL_NAME}-1 ip -6 a s eth1 | grep inet6 | awk '{print $2}' | cut -d '/' -f1)
+            echo $ip61 > _ovn_central_ip6_1
+
             (( ip_index += 1))
             ip2=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
             ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME}-2 --ipaddress=${ip2}/${cidr}
             echo $ip2 > _ovn_central_2
+            ip62=$(${RUNC_CMD} exec ${CENTRAL_NAME}-2 ip -6 a s eth1 | grep inet6 | awk '{print $2}' | cut -d '/' -f1)
+            echo $ip62 > _ovn_central_ip6_2
 
             (( ip_index += 1))
             ip3=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
             ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME}-3 --ipaddress=${ip3}/${cidr}
             echo $ip3 > _ovn_central_3
-            echo "${REMOTE_PROT}:$ip1:6642,${REMOTE_PROT}:$ip2:6642,${REMOTE_PROT}:$ip3:6642" > _ovn_remote
+            ip63=$(${RUNC_CMD} exec ${CENTRAL_NAME}-3 ip -6 a s eth1 | grep inet6 | awk '{print $2}' | cut -d '/' -f1)
+            echo $ip63 > _ovn_central_ip6_3
+
+            if [ "$IPV6_UNDERLAY" = "yes" ]; then
+                echo "${REMOTE_PROT}:[$ip61%eth1]:6642,${REMOTE_PROT}:[$ip62%eth1]:6642,${REMOTE_PROT}:[$ip63%eth1]:6642" > _ovn_remote
+            else
+                echo "${REMOTE_PROT}:$ip1:6642,${REMOTE_PROT}:$ip2:6642,${REMOTE_PROT}:$ip3:6642" > _ovn_remote
+            fi
         else
             ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip}/${cidr}
-            echo "${REMOTE_PROT}:$ip:6642" > _ovn_remote
+            ip6=$(${RUNC_CMD} exec ${CENTRAL_NAME} ip -6 a s eth1 | grep inet6 | awk '{print $2}' | cut -d '/' -f1)
+
+            if [ "$IPV6_UNDERLAY" = "yes" ]; then
+                echo "${REMOTE_PROT}:[$ip6%eth1]:6642" > _ovn_remote
+            else
+                echo "${REMOTE_PROT}:$ip:6642" > _ovn_remote
+            fi
         fi
 
         for name in "${GW_NAMES[@]}"; do
@@ -416,9 +435,15 @@ function start-db-cluster() {
                   --ovn-northd-ssl-ca-cert=${SSL_CERTS_PATH}/pki/switchca/cacert.pem"
     fi
 
-    central_1_ip=$(cat _ovn_central_1)
-    central_2_ip=$(cat _ovn_central_2)
-    central_3_ip=$(cat _ovn_central_3)
+    if [ "$IPV6_UNDERLAY" = "yes" ]; then
+        central_1_ip="[$(cat _ovn_central_ip6_1)%eth1]"
+        central_2_ip="[$(cat _ovn_central_ip6_2)%eth1]"
+        central_3_ip="[$(cat _ovn_central_ip6_3)%eth1]"
+    else
+        central_1_ip=$(cat _ovn_central_1)
+        central_2_ip=$(cat _ovn_central_2)
+        central_3_ip=$(cat _ovn_central_3)
+    fi
 
     ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ${OVNCTL_PATH} --db-nb-addr=${central_1_ip} \
     --db-sb-addr=${central_1_ip} --db-nb-cluster-local-addr=${central_1_ip} \
@@ -555,14 +580,21 @@ function start() {
             sleep 2
         fi
 
+        IP6_REMOTE=""
+        if [ "$IPV6_UNDERLAY" = "yes" ]; then
+            # If we don't pass :[::] to set-connection, then ovsdb-server
+            # doesn't listen on the IPv6 addresses.
+            IP6_REMOTE=":[::]"
+        fi
+
         if [ "$ENABLE_SSL" == "yes" ]; then
             ${RUNC_CMD} exec ${central} ovn-nbctl set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
             ${RUNC_CMD} exec ${central} ovn-sbctl set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
         fi
-        ${RUNC_CMD} exec ${central} ovn-nbctl set-connection p${REMOTE_PROT}:6641
+        ${RUNC_CMD} exec ${central} ovn-nbctl set-connection p${REMOTE_PROT}:6641${IP6_REMOTE}
         ${RUNC_CMD} exec ${central} ovn-nbctl set connection . inactivity_probe=180000
 
-        ${RUNC_CMD} exec ${central} ovn-sbctl set-connection p${REMOTE_PROT}:6642
+        ${RUNC_CMD} exec ${central} ovn-sbctl set-connection p${REMOTE_PROT}:6642${IP6_REMOTE}
         ${RUNC_CMD} exec ${central} ovn-sbctl set connection . inactivity_probe=180000
 
         for name in "${RELAY_NAMES[@]}"; do
