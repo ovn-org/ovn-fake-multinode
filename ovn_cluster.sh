@@ -32,8 +32,6 @@ OVN_BR="br-ovn"
 OVN_EXT_BR="br-ovn-ext"
 OVN_BR_CLEANUP="${OVN_BR_CLEANUP:-yes}"
 
-OVS_DOCKER="./ovs-docker"
-
 OVN_SRC_PATH="${OVN_SRC_PATH:-}"
 OVS_SRC_PATH="${OVS_SRC_PATH:-}"
 
@@ -201,27 +199,27 @@ function add-ovs-docker-ports() {
     if [ "$ovn_central" == "yes" ]; then
         if [ "$OVN_DB_CLUSTER" = "yes" ]; then
             ip1=$ip
-            ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME}-1 --ipaddress=${ip1}/${cidr}
+            ./ovs-docker add-port $br $eth ${CENTRAL_NAME}-1 --ipaddress=${ip1}/${cidr}
             echo $ip1 > _ovn_central_1
             (( ip_index += 1))
             ip2=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-            ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME}-2 --ipaddress=${ip2}/${cidr}
+            ./ovs-docker add-port $br $eth ${CENTRAL_NAME}-2 --ipaddress=${ip2}/${cidr}
             echo $ip2 > _ovn_central_2
 
             (( ip_index += 1))
             ip3=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-            ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME}-3 --ipaddress=${ip3}/${cidr}
+            ./ovs-docker add-port $br $eth ${CENTRAL_NAME}-3 --ipaddress=${ip3}/${cidr}
             echo $ip3 > _ovn_central_3
             echo "${REMOTE_PROT}:$ip1:6642,${REMOTE_PROT}:$ip2:6642,${REMOTE_PROT}:$ip3:6642" > _ovn_remote
         else
-            ${OVS_DOCKER} add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip}/${cidr}
+            ./ovs-docker add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip}/${cidr}
             echo "${REMOTE_PROT}:$ip:6642" > _ovn_remote
         fi
 
         for name in "${GW_NAMES[@]}"; do
             (( ip_index += 1))
             ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-            ${OVS_DOCKER} add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
+            ./ovs-docker add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
         done
 
         if [ "$RELAY_COUNT" -gt 0 ]; then
@@ -229,7 +227,7 @@ function add-ovs-docker-ports() {
             for name in "${RELAY_NAMES[@]}"; do
                 (( ip_index += 1))
                 ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-                ${OVS_DOCKER} add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
+                ./ovs-docker add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
                 relay_remotes=$relay_remotes",${REMOTE_PROT}:$ip:6642"
             done
             orig_remotes=$(cat _ovn_remote)
@@ -255,35 +253,35 @@ function add-ovs-docker-ports() {
     for name in "${CHASSIS_NAMES[@]}"; do
         (( ip_index += 1))
         ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-        ${OVS_DOCKER} add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
+        ./ovs-docker add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
     done
 
     if [ "$ovn_central" == "yes" ]; then
         if [ "$OVN_DB_CLUSTER" = "yes" ]; then
-            ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-1
-            ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-2
-            ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-3
+            ./ovs-docker add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-1
+            ./ovs-docker add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-2
+            ./ovs-docker add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-3
         else
-            ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}
+            ./ovs-docker add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}
         fi
         for name in "${RELAY_NAMES[@]}"; do
-            ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${name}
+            ./ovs-docker add-port ${OVN_EXT_BR} eth2 ${name}
         done
         for name in "${GW_NAMES[@]}"; do
-            ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${name}
+            ./ovs-docker add-port ${OVN_EXT_BR} eth2 ${name}
         done
     fi
 
     for name in "${CHASSIS_NAMES[@]}"; do
-        ${OVS_DOCKER} add-port ${OVN_EXT_BR} eth2 ${name}
+        ./ovs-docker add-port ${OVN_EXT_BR} eth2 ${name}
     done
 }
 
 function del-ovs-docker-ports() {
     local name=$1
 
-    ${OVS_DOCKER} del-port $OVN_BR eth1 ${name} || :
-    ${OVS_DOCKER} del-port $OVN_EXT_BR eth2 ${name} || :
+    ./ovs-docker del-port $OVN_BR eth1 ${name} || :
+    ./ovs-docker del-port $OVN_EXT_BR eth2 ${name} || :
 }
 
 function configure-ovn() {
