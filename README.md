@@ -16,12 +16,13 @@ from the [2019 OVScon](https://www.openvswitch.org/support/ovscon2019/):
 
 Step 1: Build the container images
 
-By default, Docker is used (we can switch to Podman later):
+By default, podman is used (users can control the container runtime through
+the `RUNC_CMD` environment variable):
 ```
 sudo OVN_SRC_PATH=<path_t_ovn_src_folder> OVS_SRC_PATH=<path_to_ovs_src_folder> ./ovn_cluster.sh build
 ```
 
-This will create 2 docker images
+This will create 2 container images
 
 - **ovn/cinc**: base image that gives us the nesting capability
 - **ovn/ovn-multi-node**: built on top of cinc where ovs+ovn is compiled and installed

@@ -5,7 +5,7 @@
 #set -o xtrace
 set -o errexit
 
-RUNC_CMD="${RUNC_CMD:-docker}"
+RUNC_CMD="${RUNC_CMD:-podman}"
 
 CENTRAL_IMAGE=${CENTRAL_IMAGE:-"ovn/ovn-multi-node:latest"}
 CHASSIS_IMAGE=${CHASSIS_IMAGE:-"ovn/ovn-multi-node:latest"}
@@ -156,20 +156,20 @@ function stop() {
         ovs-vsctl --if-exists del-br $OVN_EXT_BR || exit 1
     else
         if [ "$OVN_DB_CLUSTER" = "yes" ]; then
-            del-ovs-docker-ports ${CENTRAL_NAME}-1
-            del-ovs-docker-ports ${CENTRAL_NAME}-2
-            del-ovs-docker-ports ${CENTRAL_NAME}-3
+            del-ovs-container-ports ${CENTRAL_NAME}-1
+            del-ovs-container-ports ${CENTRAL_NAME}-2
+            del-ovs-container-ports ${CENTRAL_NAME}-3
         else
-            del-ovs-docker-ports ${CENTRAL_NAME}
+            del-ovs-container-ports ${CENTRAL_NAME}
         fi
         for name in "${RELAY_NAMES[@]}"; do
-            del-ovs-docker-ports ${name}
+            del-ovs-container-ports ${name}
         done
         for name in "${GW_NAMES[@]}"; do
-            del-ovs-docker-ports ${name}
+            del-ovs-container-ports ${name}
         done
         for name in "${CHASSIS_NAMES[@]}"; do
-            del-ovs-docker-ports ${name}
+            del-ovs-container-ports ${name}
         done
     fi
 
@@ -185,7 +185,7 @@ function setup-ovs-in-host() {
     ovs-vsctl br-exists $OVN_BR || ovs-vsctl add-br $OVN_EXT_BR || exit 1
 }
 
-function add-ovs-docker-ports() {
+function add-ovs-container-ports() {
     ovn_central=$1
     ip_range=$IP_HOST
     cidr=$IP_CIDR
@@ -199,27 +199,27 @@ function add-ovs-docker-ports() {
     if [ "$ovn_central" == "yes" ]; then
         if [ "$OVN_DB_CLUSTER" = "yes" ]; then
             ip1=$ip
-            ./ovs-docker add-port $br $eth ${CENTRAL_NAME}-1 --ipaddress=${ip1}/${cidr}
+            ./ovs-runc add-port $br $eth ${CENTRAL_NAME}-1 --ipaddress=${ip1}/${cidr}
             echo $ip1 > _ovn_central_1
             (( ip_index += 1))
             ip2=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-            ./ovs-docker add-port $br $eth ${CENTRAL_NAME}-2 --ipaddress=${ip2}/${cidr}
+            ./ovs-runc add-port $br $eth ${CENTRAL_NAME}-2 --ipaddress=${ip2}/${cidr}
             echo $ip2 > _ovn_central_2
 
             (( ip_index += 1))
             ip3=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-            ./ovs-docker add-port $br $eth ${CENTRAL_NAME}-3 --ipaddress=${ip3}/${cidr}
+            ./ovs-runc add-port $br $eth ${CENTRAL_NAME}-3 --ipaddress=${ip3}/${cidr}
             echo $ip3 > _ovn_central_3
             echo "${REMOTE_PROT}:$ip1:6642,${REMOTE_PROT}:$ip2:6642,${REMOTE_PROT}:$ip3:6642" > _ovn_remote
         else
-            ./ovs-docker add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip}/${cidr}
+            ./ovs-runc add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip}/${cidr}
             echo "${REMOTE_PROT}:$ip:6642" > _ovn_remote
         fi
 
         for name in "${GW_NAMES[@]}"; do
             (( ip_index += 1))
             ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-            ./ovs-docker add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
+            ./ovs-runc add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
         done
 
         if [ "$RELAY_COUNT" -gt 0 ]; then
@@ -227,7 +227,7 @@ function add-ovs-docker-ports() {
             for name in "${RELAY_NAMES[@]}"; do
                 (( ip_index += 1))
                 ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-                ./ovs-docker add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
+                ./ovs-runc add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
                 relay_remotes=$relay_remotes",${REMOTE_PROT}:$ip:6642"
             done
             orig_remotes=$(cat _ovn_remote)
@@ -253,35 +253,35 @@ function add-ovs-docker-ports() {
     for name in "${CHASSIS_NAMES[@]}"; do
         (( ip_index += 1))
         ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-        ./ovs-docker add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
+        ./ovs-runc add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
     done
 
     if [ "$ovn_central" == "yes" ]; then
         if [ "$OVN_DB_CLUSTER" = "yes" ]; then
-            ./ovs-docker add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-1
-            ./ovs-docker add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-2
-            ./ovs-docker add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-3
+            ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-1
+            ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-2
+            ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-3
         else
-            ./ovs-docker add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}
+            ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}
         fi
         for name in "${RELAY_NAMES[@]}"; do
-            ./ovs-docker add-port ${OVN_EXT_BR} eth2 ${name}
+            ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}
         done
         for name in "${GW_NAMES[@]}"; do
-            ./ovs-docker add-port ${OVN_EXT_BR} eth2 ${name}
+            ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}
         done
     fi
 
     for name in "${CHASSIS_NAMES[@]}"; do
-        ./ovs-docker add-port ${OVN_EXT_BR} eth2 ${name}
+        ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}
     done
 }
 
-function del-ovs-docker-ports() {
+function del-ovs-container-ports() {
     local name=$1
 
-    ./ovs-docker del-port $OVN_BR eth1 ${name} || :
-    ./ovs-docker del-port $OVN_EXT_BR eth2 ${name} || :
+    ./ovs-runc del-port $OVN_BR eth1 ${name} || :
+    ./ovs-runc del-port $OVN_EXT_BR eth2 ${name} || :
 }
 
 function configure-ovn() {
@@ -508,7 +508,7 @@ function start() {
 
     echo "Adding ovs-ports"
     # Add ovs ports to each of the nodes.
-    add-ovs-docker-ports ${ovn_central}
+    add-ovs-container-ports ${ovn_central}
 
     if [ "$ovn_remote" == "" ]; then
         if [ -e _ovn_remote ]; then
@@ -966,7 +966,7 @@ case "${1:-""}" in
         stop
         ;;
     stop-chassis)
-        del-ovs-docker-ports $2
+        del-ovs-container-ports $2
         stop-container $2
         ;;
     build)

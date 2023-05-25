@@ -19,7 +19,7 @@ vagrant up && vagrant ssh
 As there is no simple plugin to re-size the vagrant image with the libvirt
 provider, we will manually resize it. This will allow us to store and build
 a custom kernel, and meet the additional storage requirements for the
-updated docker images.
+updated container images.
 
 The following set of commands will re-size the image:
 
