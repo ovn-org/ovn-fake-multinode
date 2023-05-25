@@ -76,13 +76,6 @@ INSTALL_UTILS_FROM_SOURCES="${INSTALL_UTILS_FROM_SOURCES:-no}"
 OVN_NBDB_SRC=${OVN_NBDB_SRC}
 OVN_SBDB_SRC=${OVN_SBDB_SRC}
 
-function check-selinux() {
-  if [[ "$(getenforce)" = "Enforcing" ]]; then
-    >&2 echo "Error: This script is not compatible with SELinux enforcing mode."
-    exit 1
-  fi
-}
-
 function count-central() {
     local filter=${1:-}
     count-containers "${CENTRAL_NAME}" "${filter}"
@@ -486,9 +479,6 @@ function start() {
     if [ "$ovn_add_chassis" == "no" ]; then
         check-no-containers "start"
     fi
-
-    # docker-in-docker's use of volumes is not compatible with SELinux
-    #check-selinux
 
     setup-ovs-in-host
 
