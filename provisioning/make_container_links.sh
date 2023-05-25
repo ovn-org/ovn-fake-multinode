@@ -4,7 +4,7 @@
 
 # make_container_links.sh
 #
-# This script uses mounts from docker inspect and creates
+# This script uses mounts from podman inspect and creates
 # symbolic links for all directories it finds under $BASE_DIR
 #
 # Usage: $0 [BASE_DIR]
@@ -18,9 +18,9 @@ SAFE_CHECK_FILE="${BASE_DIR}/$(basename $0).washere"
 [ ! -e ${BASE_DIR} ] || [ -e "${SAFE_CHECK_FILE}" ] || { echo "cowardly bailing: ${SAFE_CHECK_FILE} not found" >&2; exit 1; }
 rm -rf ${BASE_DIR} ; mkdir -p ${BASE_DIR} ; touch "${SAFE_CHECK_FILE}"
 
-for CID in $(docker ps --no-trunc --quiet); do
-    CNAME=$(docker ps --no-trunc --filter "id=${CID}" --format {{.Names}})
-    MOUNTS=$(docker inspect ${CID} | grep -B1 '"Destination": "/' | grep -A1 '"Source": "/' | tr -d [:space:])
+for CID in $(podman ps --no-trunc --quiet); do
+    CNAME=$(podman ps --no-trunc --filter "id=${CID}" --format {{.Names}})
+    MOUNTS=$(podman inspect ${CID} | grep -B1 '"Destination": "/' | grep -A1 '"Source": "/' | tr -d [:space:])
     echo "Creating mount links: ${BASE_DIR}/${CNAME}"
     mkdir -p "${BASE_DIR}/${CID}"
     [ -n "${CNAME}" ] && ln -s ${CID} "${BASE_DIR}/${CNAME}"

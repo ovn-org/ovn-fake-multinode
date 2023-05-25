@@ -44,7 +44,7 @@
 #      vagrant halt && vagrant up
 #
 #    To build a custom OVS image do the following. You will need to restart the
-#    ovn cluster also as the docker image is using the new OVS:
+#    ovn cluster also as the container image is using the new OVS:
 #
 #      sudo /vagrant/setup_dev.sh -o -t
 #
@@ -261,11 +261,11 @@ function build_install_ovs()
     cd /vagrant || exit
     chown -R vagrant ./ovs
 
-    # If local build is successful we re-create the docker containers.
+    # If local build is successful we re-create the containers.
     /vagrant/ovn_cluster.sh build
 
     if [ "$SKIP_OVN_START" -eq "1" ]; then
-        echo "WARNING: Restart the cluster to use new OVS in docker!!"
+        echo "WARNING: Restart the cluster to use new OVS in container!!"
     fi
 }
 
@@ -349,7 +349,7 @@ function build_install_kernel_rhel()
 
 
 #
-# Start the OVN dockers
+# Start the OVN containers
 #
 function start_ovn_cluster()
 {
@@ -369,7 +369,7 @@ function start_traffic()
     then
         echo "- uperf tmux session running, please check!!"
     else
-        docker exec ovn-chassis-2 dnf install -y lksctp-tools
+        podman exec ovn-chassis-2 dnf install -y lksctp-tools
         echo "- Starting uperf server in tmux session \"uperf_server\""
         runuser -l vagrant -c /vagrant/provisioning/start_traffic_server.sh
     fi
@@ -379,7 +379,7 @@ function start_traffic()
     then
         echo "- Traffic tmux session running, please check!!"
     else
-        docker exec ovn-chassis-1 dnf install -y lksctp-tools
+        podman exec ovn-chassis-1 dnf install -y lksctp-tools
         echo "- Starting traffic in tmux session \"traffic\""
         runuser -l vagrant -c /vagrant/provisioning/start_traffic.sh
     fi
@@ -391,11 +391,11 @@ function start_traffic()
 #
 function configure_ovn()
 {
-    ! docker exec ovn-central ovn-nbctl acl-add sw0 to-lport 100 "ip4.src==10.128.2.2" allow-related
-    docker exec ovn-chassis-1 ip netns exec sw0p1 ip link set dev sw0p1 mtu 1440
-    docker exec ovn-chassis-1 ip netns exec sw0p3 ip link set dev sw0p3 mtu 1440
-    docker exec ovn-chassis-2 ip netns exec sw0p4 ip link set dev sw0p4 mtu 1440
-    docker exec ovn-chassis-2 ip netns exec sw1p1 ip link set dev sw1p1 mtu 1440
+    ! podman exec ovn-central ovn-nbctl acl-add sw0 to-lport 100 "ip4.src==10.128.2.2" allow-related
+    podman exec ovn-chassis-1 ip netns exec sw0p1 ip link set dev sw0p1 mtu 1440
+    podman exec ovn-chassis-1 ip netns exec sw0p3 ip link set dev sw0p3 mtu 1440
+    podman exec ovn-chassis-2 ip netns exec sw0p4 ip link set dev sw0p4 mtu 1440
+    podman exec ovn-chassis-2 ip netns exec sw1p1 ip link set dev sw1p1 mtu 1440
 }
 
 

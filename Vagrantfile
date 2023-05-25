@@ -59,13 +59,13 @@ Vagrant.configure(2) do |config|
     end
 
     config.vm.provision :shell do |shell|
-        shell.path = 'provisioning/install_docker.sh'
+        shell.path = 'provisioning/install_podman.sh'
     end
 
     config.vm.provision "build_images", type: "shell", inline: $build_images, privileged: true
 
-    # Install and start ovs used to interconnect the docker
-    # containers that are used to emulate the ovn chassis (below). This does not need
+    # Install and start ovs used to interconnect the containers
+    # that are used to emulate the ovn chassis (below). This does not need
     # to run ovn, since it is purely used as an underlay network.
     config.vm.provision :shell do |shell|
          shell.path = 'provisioning/install_ovs_in_underlay.sh'
