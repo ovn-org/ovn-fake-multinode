@@ -19,7 +19,7 @@ Step 1: Build the container images
 By default, podman is used (users can control the container runtime through
 the `RUNC_CMD` environment variable):
 ```
-sudo OVN_SRC_PATH=<path_t_ovn_src_folder> OVS_SRC_PATH=<path_to_ovs_src_folder> ./ovn_cluster.sh build
+sudo OVN_SRC_PATH=<path_to_ovn_src_folder> OVS_SRC_PATH=<path_to_ovs_src_folder> ./ovn_cluster.sh build
 ```
 
 This will create 2 container images
