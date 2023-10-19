@@ -18,9 +18,13 @@ OS_IMAGE=${OS_IMAGE:-"quay.io/fedora/fedora:latest"}
 OS_IMAGE_PULL_RETRIES=${OS_IMAGE_PULL_RETRIES:-40}
 OS_IMAGE_PULL_INTERVAL=${OS_IMAGE_PULL_INTERVAL:-5}
 USE_OVSDB_ETCD=${USE_OVSDB_ETCD:-no}
-CENTRAL_NAME="ovn-central"
 CHASSIS_PREFIX="${CHASSIS_PREFIX:-ovn-chassis-}"
 GW_PREFIX="ovn-gw-"
+
+CENTRAL_COUNT=${CENTRAL_COUNT:-1}
+CENTRAL_PREFIX="${CENTRAL_PREFIX:-ovn-central-az}"
+CENTRAL_NAME="${CENTRAL_NAME:-}"
+CENTRAL_NAMES=()
 
 CHASSIS_COUNT=${CHASSIS_COUNT:-2}
 CHASSIS_NAMES=()
@@ -46,7 +50,10 @@ OVN_MONITOR_ALL="${OVN_MONITOR_ALL:-no}"
 
 RELAY_COUNT=${RELAY_COUNT:-0}
 RELAY_NAMES=( )
-RELAY_PREFIX="ovn-relay-"
+
+OVN_START_IC_DBS=${OVN_START_IC_DBS:-yes}
+CENTRAL_IC_IP="${CENTRAL_IC_IP:-}"
+CENTRAL_IC_ID="${CENTRAL_IC_ID:-}"
 
 # Controls the type of OVS datapath to be used.
 # Possible values:
@@ -74,9 +81,33 @@ INSTALL_UTILS_FROM_SOURCES="${INSTALL_UTILS_FROM_SOURCES:-no}"
 OVN_NBDB_SRC=${OVN_NBDB_SRC}
 OVN_SBDB_SRC=${OVN_SBDB_SRC}
 
+function set_node_names() {
+    if [ "x$CENTRAL_NAME" == "x" ]; then
+        for (( i=1; i<=CENTRAL_COUNT; i++ )); do
+            CENTRAL_NAMES+=( "${CENTRAL_PREFIX}${i}" )
+        done
+    else
+        CENTRAL_NAMES+=( "$CENTRAL_NAME" )
+    fi
+
+    for (( i=1; i<=CHASSIS_COUNT; i++ )); do
+        CHASSIS_NAMES+=( "${CHASSIS_PREFIX}${i}" )
+    done
+
+    for (( i=1; i<=GW_COUNT; i++ )); do
+        GW_NAMES+=( "${GW_PREFIX}${i}" )
+    done
+
+    for central_name in "${CENTRAL_NAMES[@]}"; do
+        for (( j=1; j<=RELAY_COUNT; j++ )); do
+            RELAY_NAMES+=( "${central_name}-relay-${j}" )
+        done
+    done
+}
+
 function count-central() {
     local filter=${1:-}
-    count-containers "${CENTRAL_NAME}" "${filter}"
+    count-containers "${CENTRAL_PREFIX}" "${filter}"
 }
 
 function count-chassis() {
@@ -102,22 +133,6 @@ function count-containers() {
   done
 
   echo "$count"
-}
-
-function check-no-containers {
-  local operation=$1
-  local filter=${2:-}
-  local message="${3:-Existing cluster parts}"
-
-  local existing_chassis existing_central existing_gws
-  existing_chassis=$(count-chassis "${filter}")
-  existing_central=$(count-central "${filter}")
-  existing_gws=$(count-gw "${filter}")
-  if (( existing_chassis > 0 || existing_central > 0 || existing_gws > 0)); then
-    echo
-    echo "ERROR: Can't ${operation}.  ${message} (${existing_central} existing central or ${existing_chassis} existing chassis)"
-    exit 1
-  fi
 }
 
 function start-container() {
@@ -149,19 +164,21 @@ function stop-container() {
 }
 
 function stop() {
-    ip netns delete ovnfake-ext || :
-    ip netns delete ovnfake-int || :
+    for i in $(seq $CENTRAL_COUNT); do
+        ip netns delete ovnfake-ext$i || :
+        ip netns delete ovnfake-int$i || :
+    done
     if [ "${OVN_BR_CLEANUP}" == "yes" ]; then
         ovs-vsctl --if-exists del-br $OVN_BR || exit 1
         ovs-vsctl --if-exists del-br $OVN_EXT_BR || exit 1
     else
-        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
-            del-ovs-container-ports ${CENTRAL_NAME}-1
-            del-ovs-container-ports ${CENTRAL_NAME}-2
-            del-ovs-container-ports ${CENTRAL_NAME}-3
-        else
-            del-ovs-container-ports ${CENTRAL_NAME}
-        fi
+        for name in "${CENTRAL_NAMES[@]}"; do
+            del-ovs-container-ports ${name}-1
+            if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+                del-ovs-container-ports ${name}-2
+                del-ovs-container-ports ${name}-3
+            fi
+        done
         for name in "${RELAY_NAMES[@]}"; do
             del-ovs-container-ports ${name}
         done
@@ -175,7 +192,7 @@ function stop() {
 
     echo "Stopping OVN cluster"
     # Delete the containers
-    for cid in $( ${RUNC_CMD} ps -qa --filter "name=${CENTRAL_NAME}|${GW_PREFIX}|${CHASSIS_PREFIX}|${RELAY_PREFIX}" ); do
+    for cid in $( ${RUNC_CMD} ps -qa --filter "name=${CENTRAL_PREFIX}|${GW_PREFIX}|${CHASSIS_PREFIX}" ); do
        stop-container ${cid}
     done
 }
@@ -195,75 +212,86 @@ function add-ovs-container-ports() {
     eth=eth1
 
     ip_index=0
-    ip=$(./ip_gen.py $ip_range/$cidr $ip_start 0)
     if [ "$ovn_central" == "yes" ]; then
-        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
-            ip1=$ip
-            ./ovs-runc add-port $br $eth ${CENTRAL_NAME}-1 --ipaddress=${ip1}/${cidr}
-            echo $ip1 > _ovn_central_1
-            (( ip_index += 1))
-            ip2=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-            ./ovs-runc add-port $br $eth ${CENTRAL_NAME}-2 --ipaddress=${ip2}/${cidr}
-            echo $ip2 > _ovn_central_2
+        for i in $(seq 3); do
+            echo -n > _ovn_central_$i
+        done
+        echo -n > _ovn_remote
 
-            (( ip_index += 1))
-            ip3=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-            ./ovs-runc add-port $br $eth ${CENTRAL_NAME}-3 --ipaddress=${ip3}/${cidr}
-            echo $ip3 > _ovn_central_3
-            echo "${REMOTE_PROT}:$ip1:6642,${REMOTE_PROT}:$ip2:6642,${REMOTE_PROT}:$ip3:6642" > _ovn_remote
-        else
-            ./ovs-runc add-port $br $eth ${CENTRAL_NAME} --ipaddress=${ip}/${cidr}
-            echo "${REMOTE_PROT}:$ip:6642" > _ovn_remote
-        fi
+        for name in "${CENTRAL_NAMES[@]}"; do
+            if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+                ip1=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
+                ./ovs-runc add-port $br $eth ${name}-1 --ipaddress=${ip1}/${cidr}
+                echo "$name $ip1" >> _ovn_central_1
+                (( ip_index += 1))
+
+                ip2=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
+                ./ovs-runc add-port $br $eth ${name}-2 --ipaddress=${ip2}/${cidr}
+                echo "$name $ip2" >> _ovn_central_2
+                (( ip_index += 1))
+
+                ip3=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
+                ./ovs-runc add-port $br $eth ${name}-3 --ipaddress=${ip3}/${cidr}
+                echo "$name $ip3" >> _ovn_central_3
+                (( ip_index += 1))
+
+                echo "$name ${REMOTE_PROT}:$ip1:6642,${REMOTE_PROT}:$ip2:6642,${REMOTE_PROT}:$ip3:6642" >> _ovn_remote
+            else
+                ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
+                ./ovs-runc add-port $br $eth ${name}-1 --ipaddress=${ip}/${cidr}
+                echo "$name ${REMOTE_PROT}:$ip:6642" >> _ovn_remote
+                (( ip_index += 1))
+            fi
+        done
 
         for name in "${GW_NAMES[@]}"; do
-            (( ip_index += 1))
             ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
             ./ovs-runc add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
+            (( ip_index += 1))
         done
 
         if [ "$RELAY_COUNT" -gt 0 ]; then
+            echo -n > _ovn_relay_remotes
+
             relay_remotes=""
+            last_az="az1"
+
             for name in "${RELAY_NAMES[@]}"; do
-                (( ip_index += 1))
+                relay_az=$(echo $name | awk -F- '{print $3}')
+                if [ "$relay_az" != "$last_az" ]; then
+                    ovn_relay_remotes=$(echo $relay_remotes | cut -c 2-)
+                    echo "ovn-central-$last_az $ovn_relay_remotes" >> _ovn_relay_remotes
+                    relay_remotes=""
+                    last_az="$relay_az"
+                fi
+
                 ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
                 ./ovs-runc add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
                 relay_remotes=$relay_remotes",${REMOTE_PROT}:$ip:6642"
+                (( ip_index += 1))
             done
-            orig_remotes=$(cat _ovn_remote)
-            echo "${relay_remotes}" | cut -c 2- > _ovn_remote
-            echo "${orig_remotes}" > _ovn_remote_main_db
-        fi
+            ovn_relay_remotes=$(echo $relay_remotes | cut -c 2-)
+            echo "ovn-central-$last_az $ovn_relay_remotes" >> _ovn_relay_remotes
 
-    else
-        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
-            (( ip_index += 2))
+            cat _ovn_remote > _ovn_remote_main_db
+            cat _ovn_relay_remotes > _ovn_remote
         fi
-
-        if [ "$GW_COUNT" -gt 0 ]; then
-            (( ip_index += $GW_COUNT))
-        fi
-
-        if [ "$RELAY_COUNT" -gt 0 ]; then
-            (( ip_index += $RELAY_COUNT))
-        fi
-
     fi
 
     for name in "${CHASSIS_NAMES[@]}"; do
-        (( ip_index += 1))
         ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
         ./ovs-runc add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
+        (( ip_index += 1))
     done
 
     if [ "$ovn_central" == "yes" ]; then
-        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
-            ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-1
-            ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-2
-            ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}-3
-        else
-            ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${CENTRAL_NAME}
-        fi
+        for name in "${CENTRAL_NAMES[@]}"; do
+            ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-1
+            if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+                ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-2
+                ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-3
+            fi
+        done
         for name in "${RELAY_NAMES[@]}"; do
             ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}
         done
@@ -305,7 +333,7 @@ if [ "\$eth" = "" ]; then
     eth=eth1
 fi
 
-if [ "\$ovn_remote" = "" ]; then
+if [ "\$ovn_remote" = "none" ]; then
     ovn_remote="tcp:170.168.0.2:6642"
 fi
 
@@ -330,6 +358,7 @@ ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 if [ "\$is_gw" = 'is_gw' ]; then
     ovs-vsctl set open . external-ids:ovn-cms-options=enable-chassis-as-gw
 fi
+ovs-vsctl set open_vswitch . external_ids:ovn-is-interconn=true
 
 ip link set eth2 down
 ovs-vsctl add-port br-ex eth2
@@ -338,15 +367,28 @@ EOF
 
     chmod 0755 ${FAKENODE_MNT_DIR}/configure_ovn.sh
 
+    index=1
     if [ "$ovn_central" == "yes" ]; then
         for name in "${GW_NAMES[@]}"; do
+            ovn_remote_gw=$ovn_remote
+            if [ "$ovn_remote_gw" == "none" -a -e _ovn_remote ]; then
+                ovn_remote_gw="$(awk -v idx=$index 'NR==idx {print $2}' _ovn_remote)"
+            fi
             ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 \
-                ${ovn_remote} is_gw ${ovn_monitor_all} ${ovn_dp_type}
+                ${ovn_remote_gw} is_gw ${ovn_monitor_all} ${ovn_dp_type}
+                index=$((index % $CENTRAL_COUNT + 1))
         done
     fi
+
+    index=1
     for name in "${CHASSIS_NAMES[@]}"; do
+        ovn_remote_ch=$ovn_remote
+        if [ "$ovn_remote_ch" == "none" -a -e _ovn_remote ]; then
+            ovn_remote_ch="$(awk -v idx=$index 'NR==idx {print $2}' _ovn_remote)"
+        fi
         ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 \
-            ${ovn_remote} not_gw ${ovn_monitor_all} ${ovn_dp_type}
+            ${ovn_remote_ch} not_gw ${ovn_monitor_all} ${ovn_dp_type}
+            index=$((index % $CENTRAL_COUNT + 1))
     done
 }
 
@@ -356,14 +398,17 @@ function wait-containers() {
     while : ; do
         local done="1"
         if [ "${ovn_central}" == "yes" ]; then
-            if [ "$OVN_DB_CLUSTER" = "yes" ]; then
-                [[ $(count-containers "${CENTRAL_NAME}-1") == "0" ]] && continue
-                [[ $(count-containers "${CENTRAL_NAME}-2") == "0" ]] && continue
-                [[ $(count-containers "${CENTRAL_NAME}-3") == "0" ]] && continue
-            else
-                [[ $(count-containers "${CENTRAL_NAME}") == "0" ]] && continue
-            fi
-            for name in "${GW_NAMES[@]} ${RELAY_NAMES[@]}"; do
+            for name in "${CENTRAL_NAMES[@]}"; do
+                [[ $(count-containers "${name}-1") == "0" ]] && continue
+                if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+                    [[ $(count-containers "${name}-2") == "0" ]] && continue
+                    [[ $(count-containers "${name}-3") == "0" ]] && continue
+                fi
+            done
+            for name in "${GW_NAMES[@]}"; do
+                [[ $(count-containers "${name}") == "0" ]] && done="0" && break
+            done
+            for name in "${RELAY_NAMES[@]}"; do
                 [[ $(count-containers "${name}") == "0" ]] && done="0" && break
             done
             [[ ${done} == "0" ]] && continue
@@ -381,19 +426,19 @@ function provision-db-file() {
     local db=$1
     local src=$2
 
-    if [ "$OVN_DB_CLUSTER" = "yes" ]; then
-        ${RUNC_CMD} cp ${src} ${CENTRAL_NAME}-1:/etc/ovn/ovn${db}_db.db
-        ${RUNC_CMD} cp ${src} ${CENTRAL_NAME}-2:/etc/ovn/ovn${db}_db.db
-        ${RUNC_CMD} cp ${src} ${CENTRAL_NAME}-3:/etc/ovn/ovn${db}_db.db
-    else
-        ${RUNC_CMD} cp ${src} ${CENTRAL_NAME}:/etc/ovn/ovn${db}_db.db
-    fi
+    for name in "${CENTRAL_NAMES[@]}"; do
+        ${RUNC_CMD} cp ${src} ${name}-1:/etc/ovn/ovn${db}_db.db
+        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+            ${RUNC_CMD} cp ${src} ${name}-2:/etc/ovn/ovn${db}_db.db
+            ${RUNC_CMD} cp ${src} ${name}-3:/etc/ovn/ovn${db}_db.db
+        fi
+    done
 }
 
 # Starts OVN dbs RAFT cluster on ovn-central-1, ovn-central-2 and ovn-central-3
 # containers.
 function start-db-cluster() {
-    local ssl_certs_path=$1
+    local name=$1
     SSL_ARGS=""
     if [ "$ENABLE_SSL" == "yes" ]; then
         SSL_ARGS="--ovn-nb-db-ssl-key=${SSL_CERTS_PATH}/ovn-privkey.pem \
@@ -407,18 +452,18 @@ function start-db-cluster() {
                   --ovn-northd-ssl-ca-cert=${SSL_CERTS_PATH}/pki/switchca/cacert.pem"
     fi
 
-    central_1_ip=$(cat _ovn_central_1)
-    central_2_ip=$(cat _ovn_central_2)
-    central_3_ip=$(cat _ovn_central_3)
+    central_1_ip=$(awk -v NAME="$name" 'match($0, NAME) {print $2}' _ovn_central_1)
+    central_2_ip=$(awk -v NAME="$name" 'match($0, NAME) {print $2}' _ovn_central_2)
+    central_3_ip=$(awk -v NAME="$name" 'match($0, NAME) {print $2}' _ovn_central_3)
 
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ${OVNCTL_PATH} --db-nb-addr=${central_1_ip} \
+    ${RUNC_CMD} exec ${name}-1 ${OVNCTL_PATH} --db-nb-addr=${central_1_ip} \
     --db-sb-addr=${central_1_ip} --db-nb-cluster-local-addr=${central_1_ip} \
     --db-nb-cluster-local-proto=${REMOTE_PROT} \
     --db-sb-cluster-local-addr=${central_1_ip} --db-sb-cluster-local-proto=${REMOTE_PROT} \
-    --ovn-nb-db-ssl-key=/data/${CENTRAL_NAME}/ovnnb-privkey.pem \
+    --ovn-nb-db-ssl-key=/data/${name}/ovnnb-privkey.pem \
     $SSL_ARGS start_ovsdb
 
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-2 ${OVNCTL_PATH} --db-nb-addr=${central_2_ip}  \
+    ${RUNC_CMD} exec ${name}-2 ${OVNCTL_PATH} --db-nb-addr=${central_2_ip}  \
     --db-sb-addr=${central_2_ip} \
     --db-nb-cluster-local-addr=${central_2_ip} --db-nb-cluster-remote-addr=${central_1_ip} \
     --db-sb-cluster-local-addr=${central_2_ip} --db-sb-cluster-remote-addr=${central_1_ip} \
@@ -426,7 +471,7 @@ function start-db-cluster() {
     --db-nb-cluster-remote-proto=${REMOTE_PROT} --db-sb-cluster-remote-proto=${REMOTE_PROT} \
     $SSL_ARGS start_ovsdb
 
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-3 ${OVNCTL_PATH} --db-nb-addr=${central_3_ip} \
+    ${RUNC_CMD} exec ${name}-3 ${OVNCTL_PATH} --db-nb-addr=${central_3_ip} \
     --db-sb-addr=${central_3_ip}  \
     --db-nb-cluster-local-addr=${central_3_ip} --db-nb-cluster-remote-addr=${central_1_ip} \
     --db-sb-cluster-local-addr=${central_3_ip} --db-sb-cluster-remote-addr=${central_1_ip} \
@@ -438,24 +483,98 @@ function start-db-cluster() {
     sleep 3
 
     # Start ovn-northd on all ovn-central nodes. One of the instance gets the lock from
-    # SB DB ovsdb-server and becomes active. Most likely ovn-northd in ${CENTRAL_NAME}-1
+    # SB DB ovsdb-server and becomes active. Most likely ovn-northd in ${name}-1
     # will become active as it is started first.
     # 'ovn-appctl -t ovn-northd status' will give the status of ovn-northd i.e if it
     # has lock and active or not.
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-1 ${OVNCTL_PATH}  \
+    ${RUNC_CMD} exec ${name}-1 ${OVNCTL_PATH}  \
     --ovn-northd-nb-db=${REMOTE_PROT}:${central_1_ip}:6641,${REMOTE_PROT}:${central_2_ip}:6641,${REMOTE_PROT}:${central_3_ip}:6641 \
     --ovn-northd-sb-db=${REMOTE_PROT}:${central_1_ip}:6642,${REMOTE_PROT}:${central_2_ip}:6642,${REMOTE_PROT}:${central_3_ip}:6642 --ovn-manage-ovsdb=no \
     $SSL_ARGS start_northd
 
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-2 ${OVNCTL_PATH}  \
+    ${RUNC_CMD} exec ${name}-2 ${OVNCTL_PATH}  \
     --ovn-northd-nb-db=${REMOTE_PROT}:${central_1_ip}:6641,${REMOTE_PROT}:${central_2_ip}:6641,${REMOTE_PROT}:${central_3_ip}:6641 \
     --ovn-northd-sb-db=${REMOTE_PROT}:${central_1_ip}:6642,${REMOTE_PROT}:${central_2_ip}:6642,${REMOTE_PROT}:${central_3_ip}:6642 --ovn-manage-ovsdb=no \
     $SSL_ARGS start_northd
 
-    ${RUNC_CMD} exec ${CENTRAL_NAME}-3 ${OVNCTL_PATH}  \
+    ${RUNC_CMD} exec ${name}-3 ${OVNCTL_PATH}  \
     --ovn-northd-nb-db=${REMOTE_PROT}:${central_1_ip}:6641,${REMOTE_PROT}:${central_2_ip}:6641,${REMOTE_PROT}:${central_3_ip}:6641 \
     --ovn-northd-sb-db=${REMOTE_PROT}:${central_1_ip}:6642,${REMOTE_PROT}:${central_2_ip}:6642,${REMOTE_PROT}:${central_3_ip}:6642 --ovn-manage-ovsdb=no \
     $SSL_ARGS start_northd
+}
+
+function start-ovn-ic() {
+    if [ "$OVN_START_IC_DBS" = "yes" ]; then
+        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+            CENTRAL_IC_IP=$(awk -v NAME="${CENTRAL_NAMES[0]}" 'match($0, NAME) {print $2}' _ovn_central_1)
+            ${RUNC_CMD} exec "${CENTRAL_NAMES[0]}"-1 ${OVNCTL_PATH}  \
+                --db-ic-nb-create-insecure-remote=yes   \
+                --db-ic-sb-create-insecure-remote=yes start_ic_ovsdb
+        else
+            [ $RELAY_COUNT -gt 0 ] && REMOTE=_ovn_remote_main_db || REMOTE=_ovn_remote
+            CENTRAL_IC_IP=$(awk -v NAME="${CENTRAL_NAMES[0]}" 'match($0, NAME) {print $2}' $REMOTE |awk -F: '{print $2}')
+            ${RUNC_CMD} exec "${CENTRAL_NAMES[0]}"-1 ${OVNCTL_PATH}  \
+                --db-ic-nb-create-insecure-remote=yes   \
+                --db-ic-sb-create-insecure-remote=yes start_ic_ovsdb
+        fi
+        CENTRAL_IC_ID="${CENTRAL_NAMES[0]}"-1
+    elif [ -z "$CENTRAL_IC_IP" ] || [ -z "$CENTRAL_IC_ID" ]; then
+        echo "IC DBs not started locally, please specify the IC DBs container name (CENTRAL_IC_ID) and its IP (CENTRAL_IC_IP)"
+        exit 1
+    fi
+
+    for name in "${CENTRAL_NAMES[@]}"; do
+        ${RUNC_CMD} exec ${name}-1 ${OVNCTL_PATH}                     \
+            --ovn-ic-nb-db=tcp:${CENTRAL_IC_IP}:6645                   \
+            --ovn-ic-sb-db=tcp:${CENTRAL_IC_IP}:6646 start_ic
+        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+            ${RUNC_CMD} exec ${name}-2 ${OVNCTL_PATH}                   \
+                --ovn-ic-nb-db=tcp:${CENTRAL_IC_IP}:6645                   \
+                --ovn-ic-sb-db=tcp:${CENTRAL_IC_IP}:6646 start_ic
+            ${RUNC_CMD} exec ${name}-3 ${OVNCTL_PATH}                   \
+                --ovn-ic-nb-db=tcp:${CENTRAL_IC_IP}:6645                   \
+                --ovn-ic-sb-db=tcp:${CENTRAL_IC_IP}:6646 start_ic
+        fi
+    done
+}
+
+function check-no-central {
+    local operation=$1
+    local filter=${2:-}
+    local message="${3:-Existing central}"
+    
+    local existing_central=$(count-central "${filter}")
+    if (( existing_central > 0 )); then
+        echo
+        echo "ERROR: Can't ${operation}.  ${message} (${existing_chassis} existing central)"
+        exit 1
+    fi
+}
+
+function check-no-chassis {
+    local operation=$1
+    local filter=${2:-}
+    local message="${3:-Existing chassis}"
+    
+    local existing_chassis=$(count-chassis "${filter}")
+    if (( existing_chassis > 0 )); then
+        echo
+        echo "ERROR: Can't ${operation}.  ${message} (${existing_chassis} existing chassis)"
+        exit 1
+    fi
+}
+
+function check-no-gw {
+    local operation=$1
+    local filter=${2:-}
+    local message="${3:-Existing gw}"
+    
+    local existing_gw=$(count-gw "${filter}")
+    if (( existing_gw > 0 )); then
+        echo
+        echo "ERROR: Can't ${operation}.  ${message} (${existing_gw} existing gw)"
+        exit 1
+    fi
 }
 
 function start() {
@@ -474,8 +593,13 @@ function start() {
         ovn_add_chassis="no"
     fi
 
-    if [ "$ovn_add_chassis" == "no" ]; then
-        check-no-containers "start"
+    if [ "$ovn_central" == "yes" ]; then
+        check-no-central "start"
+        check-no-gw "start"
+    fi
+
+    if [ "$ovn_add_chassis" == "no" ] && [ "${CHASSIS_COUNT}" -gt 0 ]; then
+        check-no-chassis "start"
     fi
 
     setup-ovs-in-host
@@ -484,13 +608,13 @@ function start() {
 
     # Create containers
     if [ "$ovn_central" == "yes" ]; then
-        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
-            start-container "${CENTRAL_IMAGE}" "${CENTRAL_NAME}-1"
-            start-container "${CENTRAL_IMAGE}" "${CENTRAL_NAME}-2"
-            start-container "${CENTRAL_IMAGE}" "${CENTRAL_NAME}-3"
-        else
-            start-container "${CENTRAL_IMAGE}" "${CENTRAL_NAME}"
-        fi
+        for name in "${CENTRAL_NAMES[@]}"; do
+            start-container "${CENTRAL_IMAGE}" "${name}-1"
+            if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+                start-container "${CENTRAL_IMAGE}" "${name}-2"
+                start-container "${CENTRAL_IMAGE}" "${name}-3"
+            fi
+        done
 
         for name in "${GW_NAMES[@]}"; do
             start-container "${GW_IMAGE}" "${name}"
@@ -510,10 +634,8 @@ function start() {
     # Add ovs ports to each of the nodes.
     add-ovs-container-ports ${ovn_central}
 
-    if [ "$ovn_remote" == "" ]; then
-        if [ -e _ovn_remote ]; then
-            ovn_remote="$(cat _ovn_remote)"
-        fi
+    if [ "x$ovn_remote" == "x" ]; then
+        ovn_remote="none"
     fi
 
     # Start OVN db servers on central node
@@ -526,32 +648,39 @@ function start() {
             provision-db-file sb ${OVN_SBDB_SRC}
         fi
 
-        central=${CENTRAL_NAME}
-        if [ "$ENABLE_ETCD" == "yes" ]; then
-            echo "Starting ovsdb-etcd in ${CENTRAL_NAME} container"
-            ${RUNC_CMD} exec --detach ${CENTRAL_NAME} bash -c "/run_ovsdb_etcd.sh"
-            sleep 2
-            ${RUNC_CMD} exec --detach ${CENTRAL_NAME} bash -c "/run_ovsdb_etcd_sb.sh"
-            ${RUNC_CMD} exec --detach ${CENTRAL_NAME} bash -c "/run_ovsdb_etcd_nb.sh"
-            ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} --ovn-manage-ovsdb=no start_northd
+        for name in "${CENTRAL_NAMES[@]}"; do
+            central=${name}-1
+            if [ "$ENABLE_ETCD" == "yes" ]; then
+                central=${name}
+                echo "Starting ovsdb-etcd in ${name} container"
+                ${RUNC_CMD} exec --detach ${name} bash -c "/run_ovsdb_etcd.sh"
+                sleep 2
+                ${RUNC_CMD} exec --detach ${name} bash -c "/run_ovsdb_etcd_sb.sh"
+                ${RUNC_CMD} exec --detach ${name} bash -c "/run_ovsdb_etcd_nb.sh"
+                ${RUNC_CMD} exec ${name} ${OVNCTL_PATH} --ovn-manage-ovsdb=no start_northd
+            elif [ "$OVN_DB_CLUSTER" = "yes" ]; then
+                start-db-cluster ${name}
+            else
+                ${RUNC_CMD} exec ${name}-1 ${OVNCTL_PATH} start_northd
+                sleep 2
+            fi
 
-        elif [ "$OVN_DB_CLUSTER" = "yes" ]; then
-            start-db-cluster
-            central=${CENTRAL_NAME}-1
-        else
-            ${RUNC_CMD} exec ${CENTRAL_NAME} ${OVNCTL_PATH} start_northd
-            sleep 2
-        fi
+            if [ "$ENABLE_SSL" == "yes" ]; then
+                ${RUNC_CMD} exec ${central} ovn-nbctl set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
+                ${RUNC_CMD} exec ${central} ovn-sbctl set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
+            fi
+            ${RUNC_CMD} exec ${central} ovn-nbctl set-connection p${REMOTE_PROT}:6641
+            ${RUNC_CMD} exec ${central} ovn-nbctl set connection . inactivity_probe=180000
 
-        if [ "$ENABLE_SSL" == "yes" ]; then
-            ${RUNC_CMD} exec ${central} ovn-nbctl set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
-            ${RUNC_CMD} exec ${central} ovn-sbctl set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
-        fi
-        ${RUNC_CMD} exec ${central} ovn-nbctl set-connection p${REMOTE_PROT}:6641
-        ${RUNC_CMD} exec ${central} ovn-nbctl set connection . inactivity_probe=180000
+            ${RUNC_CMD} exec ${central} ovn-nbctl set NB_Global . name=${central} \
+                options:ic-route-adv=true options:ic-route-learn=true
 
-        ${RUNC_CMD} exec ${central} ovn-sbctl set-connection p${REMOTE_PROT}:6642
-        ${RUNC_CMD} exec ${central} ovn-sbctl set connection . inactivity_probe=180000
+            ${RUNC_CMD} exec ${central} ovn-sbctl set-connection p${REMOTE_PROT}:6642
+            ${RUNC_CMD} exec ${central} ovn-sbctl set connection . inactivity_probe=180000
+        done
+
+        # start ovn-ic dbs
+        start-ovn-ic
 
         for name in "${RELAY_NAMES[@]}"; do
             SSL_ARGS=
@@ -562,11 +691,12 @@ function start() {
                           --ssl-protocols=db:OVN_Southbound,SSL,ssl_protocols \
                           --ssl-ciphers=db:OVN_Southbound,SSL,ssl_ciphers"
             fi
+            relay_az=$(echo $name | awk -F- '{print $3}')
             ${RUNC_CMD} exec ${name} ovsdb-server -vconsole:off -vfile:info -vrelay:file:dbg \
                 --log-file=/var/log/ovn/ovsdb-server-sb.log --remote=punix:/var/run/ovn/ovnsb_db.sock \
                 --pidfile=/var/run/ovn/ovnsb_db.pid --unixctl=/var/run/ovn/ovnsb_db.ctl \
                 --detach --monitor --remote=db:OVN_Southbound,SB_Global,connections \
-                ${SSL_ARGS} relay:OVN_Southbound:$(cat _ovn_remote_main_db)
+                ${SSL_ARGS} relay:OVN_Southbound:$(grep $relay_az _ovn_remote_main_db | awk '{print $2}')
         done
 
         for name in "${GW_NAMES[@]}"; do
@@ -592,95 +722,109 @@ function start() {
 }
 
 function create_fake_vms() {
+    az=$1
+    [ $2 -gt 1 ] && ic="yes" || ic="no"
     cat << EOF > ${FAKENODE_MNT_DIR}/create_ovn_res.sh
 #!/bin/bash
 
 #set -o xtrace
 set -o errexit
 
-ovn-nbctl ls-add sw0
+az=\$1
+ic=\$2
 
-# ovn dhcpd on sw0
-ovn-nbctl set logical_switch sw0 \
-  other_config:subnet="10.0.0.0/24" \
-  other_config:exclude_ips="10.0.0.1..10.0.0.2"
-ovn-nbctl dhcp-options-create 10.0.0.0/24
-CIDR_UUID=\$(ovn-nbctl --bare --columns=_uuid find dhcp_options cidr="10.0.0.0/24")
+ovn-nbctl ls-add sw0\$az
+
+# ovn dhcpd on sw0\$az
+ovn-nbctl set logical_switch sw0\$az \
+  other_config:subnet="1\$az.0.0.0/24" \
+  other_config:exclude_ips="1\$az.0.0.1..1\$az.0.0.2"
+ovn-nbctl dhcp-options-create 1\$az.0.0.0/24
+CIDR_UUID=\$(ovn-nbctl --bare --columns=_uuid find dhcp_options cidr="1\$az.0.0.0/24")
 ovn-nbctl dhcp-options-set-options \$CIDR_UUID \
   lease_time=3600 \
-  router=10.0.0.1 \
-  server_id=10.0.0.1 \
+  router=1\$az.0.0.1 \
+  server_id=1\$az.0.0.1 \
   server_mac=c0:ff:ee:00:00:01
 
-ovn-nbctl lsp-add sw0 sw0-port1
-ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3 1000::3"
-ovn-nbctl lsp-add sw0 sw0-port2
-ovn-nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 1000::4"
+ovn-nbctl lsp-add sw0\$az sw0\$az-port1
+ovn-nbctl lsp-set-addresses sw0\$az-port1 "50:5\$az:00:00:00:03 1\$az.0.0.3 100\$az::3"
+ovn-nbctl lsp-add sw0\$az sw0\$az-port2
+ovn-nbctl lsp-set-addresses sw0\$az-port2 "50:5\$az:00:00:00:04 1\$az.0.0.4 100\$az::4"
 
-# Create ports in sw0 that will use dhcp from ovn
-ovn-nbctl lsp-add sw0 sw0-port3
-ovn-nbctl lsp-set-addresses sw0-port3 "50:54:00:00:00:05 dynamic"
-ovn-nbctl lsp-set-dhcpv4-options sw0-port3 \$CIDR_UUID
-ovn-nbctl lsp-add sw0 sw0-port4
-ovn-nbctl lsp-set-addresses sw0-port4 "50:54:00:00:00:06 dynamic"
-ovn-nbctl lsp-set-dhcpv4-options sw0-port4 \$CIDR_UUID
+# Create ports in sw0\$az that will use dhcp from ovn
+ovn-nbctl lsp-add sw0\$az sw0\$az-port3
+ovn-nbctl lsp-set-addresses sw0\$az-port3 "50:5\$az:00:00:00:05 dynamic"
+ovn-nbctl lsp-set-dhcpv4-options sw0\$az-port3 \$CIDR_UUID
+ovn-nbctl lsp-add sw0\$az sw0\$az-port4
+ovn-nbctl lsp-set-addresses sw0\$az-port4 "50:5\$az:00:00:00:06 dynamic"
+ovn-nbctl lsp-set-dhcpv4-options sw0\$az-port4 \$CIDR_UUID
 
 # Create the second logical switch with one port
-ovn-nbctl ls-add sw1
-ovn-nbctl lsp-add sw1 sw1-port1
-ovn-nbctl lsp-set-addresses sw1-port1 "40:54:00:00:00:03 20.0.0.3 2000::3"
+ovn-nbctl ls-add sw1\$az
+ovn-nbctl lsp-add sw1\$az sw1\$az-port1
+ovn-nbctl lsp-set-addresses sw1\$az-port1 "40:5\$az:00:00:00:03 2\$az.0.0.3 200\$az::3"
 
 # Create a logical router and attach both logical switches
-ovn-nbctl lr-add lr0
-ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
-ovn-nbctl lsp-add sw0 sw0-lr0
-ovn-nbctl lsp-set-type sw0-lr0 router
-ovn-nbctl lsp-set-addresses sw0-lr0 router
-ovn-nbctl lsp-set-options sw0-lr0 router-port=lr0-sw0
+ovn-nbctl lr-add lr\$az
+ovn-nbctl lrp-add lr\$az lr\$az-sw0\$az 00:0\$az:00:00:ff:01 1\$az.0.0.1/24 100\$az::a/64
+ovn-nbctl lsp-add sw0\$az sw0\$az-lr\$az
+ovn-nbctl lsp-set-type sw0\$az-lr\$az router
+ovn-nbctl lsp-set-addresses sw0\$az-lr\$az router
+ovn-nbctl lsp-set-options sw0\$az-lr\$az router-port=lr\$az-sw0\$az
 
-ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
-ovn-nbctl lsp-add sw1 sw1-lr0
-ovn-nbctl lsp-set-type sw1-lr0 router
-ovn-nbctl lsp-set-addresses sw1-lr0 router
-ovn-nbctl lsp-set-options sw1-lr0 router-port=lr0-sw1
+ovn-nbctl lrp-add lr\$az lr\$az-sw1\$az 00:0\$az:00:00:ff:02 2\$az.0.0.1/24 200\$az::a/64
+ovn-nbctl lsp-add sw1\$az sw1\$az-lr\$az
+ovn-nbctl lsp-set-type sw1\$az-lr\$az router
+ovn-nbctl lsp-set-addresses sw1\$az-lr\$az router
+ovn-nbctl lsp-set-options sw1\$az-lr\$az router-port=lr\$az-sw1\$az
 
-ovn-nbctl ls-add public
-ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.16.0.100/24 3000::a/64
-ovn-nbctl lsp-add public public-lr0
-ovn-nbctl lsp-set-type public-lr0 router
-ovn-nbctl lsp-set-addresses public-lr0 router
-ovn-nbctl lsp-set-options public-lr0 router-port=lr0-public
+ovn-nbctl ls-add public\$az
+ovn-nbctl lrp-add lr\$az lr\$az-public\$az 00:0\$az:20:20:12:13 172.16.\$az.100/24 300\$az::a/64
+ovn-nbctl lsp-add public\$az public\$az-lr\$az
+ovn-nbctl lsp-set-type public\$az-lr\$az router
+ovn-nbctl lsp-set-addresses public\$az-lr\$az router
+ovn-nbctl lsp-set-options public\$az-lr\$az router-port=lr\$az-public\$az
 
 # localnet port
-ovn-nbctl lsp-add public ln-public
-ovn-nbctl lsp-set-type ln-public localnet
-ovn-nbctl lsp-set-addresses ln-public unknown
-ovn-nbctl lsp-set-options ln-public network_name=public
+ovn-nbctl lsp-add public\$az ln-public\$az
+ovn-nbctl lsp-set-type ln-public\$az localnet
+ovn-nbctl lsp-set-addresses ln-public\$az unknown
+ovn-nbctl lsp-set-options ln-public\$az network_name=public
 
 # schedule the gw router port to a chassis.
-ovn-nbctl lrp-set-gateway-chassis lr0-public ovn-gw-1 20
+ovn-nbctl lrp-set-gateway-chassis lr\$az-public\$az ovn-gw-\$az 20
 
 # Create NAT entries for the ports
 
-# sw0-port1
-ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.16.0.110 10.0.0.3 sw0-port1 30:54:00:00:00:03
-ovn-nbctl lr-nat-add lr0 dnat_and_snat 3000::c 1000::3 sw0-port1 40:54:00:00:00:03
-# sw1-port1
-ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.16.0.120 20.0.0.3 sw1-port1 30:54:00:00:00:04
-ovn-nbctl lr-nat-add lr0 dnat_and_snat 3000::d 2000::3 sw1-port1 40:54:00:00:00:04
+# sw0\$az-port1
+ovn-nbctl lr-nat-add lr\$az dnat_and_snat 172.16.\$az.110 1\$az.0.0.3 sw0\$az-port1 30:5\$az:00:00:00:03
+ovn-nbctl lr-nat-add lr\$az dnat_and_snat 300\$az::c 100\$az::3 sw0\$az-port1 40:5\$az:00:00:00:03
+# sw1\$az-port1
+ovn-nbctl lr-nat-add lr\$az dnat_and_snat 172.16.\$az.120 2\$az.0.0.3 sw1\$az-port1 30:5\$az:00:00:00:04
+ovn-nbctl lr-nat-add lr\$az dnat_and_snat 300\$az::d 200\$az::3 sw1\$az-port1 40:5\$az:00:00:00:04
 
 # Add a snat entry
-ovn-nbctl lr-nat-add lr0 snat 172.16.0.100 10.0.0.0/24
-ovn-nbctl lr-nat-add lr0 snat 172.16.0.100 20.0.0.0/24
+ovn-nbctl lr-nat-add lr\$az snat 172.16.\$az.100 1\$az.0.0.0/24
+ovn-nbctl lr-nat-add lr\$az snat 172.16.\$az.100 2\$az.0.0.0/24
+
+if [ "\$ic" == "yes" ]; then
+    ovn-nbctl lrp-add lr\$az lr\$az-ts1 aa:aa:aa:aa:aa:0\$az 5.0.0.\$az/24
+    ovn-nbctl lsp-add ts1 ts1-lr\$az -- lsp-set-addresses ts1-lr\$az -- lsp-set-type ts1-lr\$az router -- lsp-set-options ts1-lr\$az  router-port=lr\$az-ts1
+    ovn-nbctl lrp-set-gateway-chassis lr\$az-ts1 ovn-gw-\$az 1
+fi
 
 EOF
     chmod 0755 ${FAKENODE_MNT_DIR}/create_ovn_res.sh
-    if [ "$OVN_DB_CLUSTER" = "yes" ]; then
-        central=${CENTRAL_NAME}-1
-    else
-        central=${CENTRAL_NAME}
-    fi
-    ${RUNC_CMD} exec ${central} bash /data/create_ovn_res.sh
+
+    # add ts transit switch.
+    ${RUNC_CMD} exec ${CENTRAL_IC_ID} ovn-ic-nbctl ts-add ts1
+    # wait for ovn-ic to kick in
+    while sleep 2; do
+        ${RUNC_CMD} exec ${CENTRAL_IC_ID} ovn-nbctl ls-list | grep -q ts1 && break
+    done
+
+    ${RUNC_CMD} exec ${CENTRAL_PREFIX}${az}-1 bash /data/create_ovn_res.sh $az $ic
 
     cat << EOF > ${FAKENODE_MNT_DIR}/create_fake_vm.sh
 #!/bin/bash
@@ -724,40 +868,46 @@ create_fake_vm \$@
 EOF
     chmod 0755 ${FAKENODE_MNT_DIR}/create_fake_vm.sh
 
-    echo "Creating a fake VM in "${CHASSIS_NAMES[0]}" for logical port - sw0-port1"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 1400 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
-    echo "Creating a fake VM in "${CHASSIS_NAMES[1]}" for logical port - sw1-port1"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[1]}" bash /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1400 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
+    echo "Creating a fake VM in "${CHASSIS_NAMES[$((az-1))]}" for logical port - sw0$az-port1"
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[$((az-1))]}" bash /data/create_fake_vm.sh sw0$az-port1 sw0${az}p1 50:5$az:00:00:00:03 1400 1$az.0.0.3 24 1$az.0.0.1 100$az::3/64 100$az::a
+    echo "Creating a fake VM in "${CHASSIS_NAMES[$((az+CENTRAL_COUNT-1))]}" for logical port - sw1$az-port1"
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[$((az+CENTRAL_COUNT-1))]}" bash /data/create_fake_vm.sh sw1$az-port1 sw1${az}p1 40:5$az:00:00:00:03 1400 2$az.0.0.3 24 2$az.0.0.1 200$az::3/64 200$az::a
 
-    echo "Creating a fake VM in "${CHASSIS_NAMES[0]}" for logical port - sw0-port3 (using dhcp)"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[0]}" bash /data/create_fake_vm.sh sw0-port3 sw0p3 50:54:00:00:00:05 1400 dhcp
-    echo "Creating a fake VM in "${CHASSIS_NAMES[1]}" for logical port - sw0-port4 (using dhcp)"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[1]}" bash /data/create_fake_vm.sh sw0-port4 sw0p4 50:54:00:00:00:06 1400 dhcp
+    echo "Creating a fake VM in "${CHASSIS_NAMES[$((az-1))]}" for logical port - sw0$az-port3 (using dhcp)"
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[$((az-1))]}" bash /data/create_fake_vm.sh sw0$az-port3 sw0${az}p3 50:5$az:00:00:00:05 1400 dhcp
+    echo "Creating a fake VM in "${CHASSIS_NAMES[$((az+CENTRAL_COUNT-1))]}" for logical port - sw0$az-port4 (using dhcp)"
+    ${RUNC_CMD} exec "${CHASSIS_NAMES[$((az+CENTRAL_COUNT-1))]}" bash /data/create_fake_vm.sh sw0$az-port4 sw0${az}p4 50:5$az:00:00:00:06 1400 dhcp
 
     echo "Creating a fake VM in the host bridge ${OVN_EXT_BR}"
-    ip netns add ovnfake-ext
-    ovs-vsctl add-port ${OVN_EXT_BR} ovnfake-ext -- set interface ovnfake-ext type=internal
-    ip link set ovnfake-ext netns ovnfake-ext
-    ip netns exec ovnfake-ext ip link set lo up
-    ip netns exec ovnfake-ext ip link set ovnfake-ext address 30:54:00:00:00:50
-    ip netns exec ovnfake-ext ip addr add 172.16.0.50/24 dev ovnfake-ext
-    ip netns exec ovnfake-ext ip addr add 3000::b/64 dev ovnfake-ext
-    ip netns exec ovnfake-ext ip link set ovnfake-ext up
-    ip netns exec ovnfake-ext ip route add default via 172.16.0.100
+    ip netns add ovnfake-ext$az
+    ovs-vsctl add-port ${OVN_EXT_BR} ovnfake-ext$az -- set interface ovnfake-ext$az type=internal
+    ip link set ovnfake-ext$az netns ovnfake-ext$az
+    ip netns exec ovnfake-ext$az ip link set lo up
+    ip netns exec ovnfake-ext$az ip link set ovnfake-ext$az address 30:5$az:00:00:00:50
+    ip netns exec ovnfake-ext$az ip addr add 172.16.$az.50/24 dev ovnfake-ext$az
+    ip netns exec ovnfake-ext$az ip addr add 300$az::b/64 dev ovnfake-ext$az
+    ip netns exec ovnfake-ext$az ip link set ovnfake-ext$az up
+    ip netns exec ovnfake-ext$az ip route add default via 172.16.$az.100
 
     echo "Creating a fake VM in the ovs bridge ${OVN_BR}"
-    ip netns add ovnfake-int
-    ovs-vsctl add-port ${OVN_BR} ovnfake-int -- set interface ovnfake-int type=internal
-    ip link set ovnfake-int netns ovnfake-int
-    ip netns exec ovnfake-int ip link set lo up
-    ip netns exec ovnfake-int ip link set ovnfake-int address 30:54:00:00:00:60
-    ip netns exec ovnfake-int ip addr add 170.168.0.1/${IP_CIDR} dev ovnfake-int
-    ip netns exec ovnfake-int ip link set ovnfake-int up
+    ip netns add ovnfake-int$az
+    ovs-vsctl add-port ${OVN_BR} ovnfake-int$az -- set interface ovnfake-int$az type=internal
+    ip link set ovnfake-int$az netns ovnfake-int$az
+    ip netns exec ovnfake-int$az ip link set lo up
+    ip netns exec ovnfake-int$az ip link set ovnfake-int$az address 30:5$az:00:00:00:60
+    ip netns exec ovnfake-int$az ip addr add 170.168.0.1/${IP_CIDR} dev ovnfake-int$az
+    ip netns exec ovnfake-int$az ip link set ovnfake-int$az up
 }
 
 function set-ovn-remote() {
     ovn_remote=$1
     ovn_central=$2
+    ovn_central_name=$3
+
+    if [ "x$ovn_central_name" == "x" ]; then
+        ovn_central_name="ovn-central-az1"
+    fi
+
     echo "OVN remote = $1"
     existing_chassis=$(count-chassis "${filter}")
     if (( existing_chassis == 0)); then
@@ -767,7 +917,7 @@ function set-ovn-remote() {
     fi
 
     if [ "$OVN_DB_CLUSTER" != "yes" ] && [ "$ovn_central" == "yes" ]; then
-        ${RUNC_CMD} exec ${CENTRAL_NAME} ovs-vsctl set open . external_ids:ovn-remote=$ovn_remote
+        ${RUNC_CMD} exec $ovn_central_name ovs-vsctl set open . external_ids:ovn-remote=$ovn_remote
     fi
 
     for name in "${GW_NAMES[@]}"; do
@@ -862,10 +1012,12 @@ function build-images-with-ovn-sources() {
 }
 
 function run-command() {
+    ovn_central_name=$1
+    shift;
     cmd=$@
 
-    echo "Running command $cmd in container $CENTRAL_NAME"
-    ${RUNC_CMD} exec $CENTRAL_NAME $cmd ||:
+    echo "Running command $cmd in container $ovn_central_name"
+    ${RUNC_CMD} exec $ovn_central_name $cmd ||:
 
     for name in "${GW_NAMES[@]}"; do
         echo "Running command $cmd in container $name"
@@ -921,17 +1073,12 @@ case "${1:-""}" in
             esac
         done
 
-        for (( i=1; i<=CHASSIS_COUNT; i++ )); do
-            CHASSIS_NAMES+=( "${CHASSIS_PREFIX}${i}" )
-        done
+        if [ "${CREATE_FAKE_VMS}" == "yes" ]; then
+            [ $CHASSIS_COUNT -lt $((2*CENTRAL_COUNT)) ] && CHASSIS_COUNT=$((2*CENTRAL_COUNT))
+            [ $GW_COUNT -lt $CENTRAL_COUNT ] && GW_COUNT=$CENTRAL_COUNT
+        fi
 
-        for (( i=1; i<=GW_COUNT; i++ )); do
-            GW_NAMES+=( "${GW_PREFIX}${i}" )
-        done
-
-        for (( i=1; i<=RELAY_COUNT; i++ )); do
-            RELAY_NAMES+=( "${RELAY_PREFIX}${i}" )
-        done
+        set_node_names
 
         if [[ -n "${REMOVE_EXISTING_CLUSTER}" ]]; then
             stop
@@ -939,7 +1086,9 @@ case "${1:-""}" in
 
         start
         if [ "${CREATE_FAKE_VMS}" == "yes" ]; then
-            create_fake_vms
+            for i in $(seq $CENTRAL_COUNT); do
+                create_fake_vms $i $CENTRAL_COUNT
+            done
         fi
         ;;
     start-chassis)
@@ -954,17 +1103,7 @@ case "${1:-""}" in
         start-chassis $3 "yes"
         ;;
     stop)
-        for (( i=1; i<=CHASSIS_COUNT; i++ )); do
-            CHASSIS_NAMES+=( "${CHASSIS_PREFIX}${i}" )
-        done
-
-        for (( i=1; i<=GW_COUNT; i++ )); do
-            GW_NAMES+=( "${GW_PREFIX}${i}" )
-        done
-
-        for (( i=1; i<=RELAY_COUNT; i++ )); do
-            RELAY_NAMES+=( "${RELAY_PREFIX}${i}" )
-        done
+        set_node_names
         stop
         ;;
     stop-chassis)
@@ -983,40 +1122,18 @@ case "${1:-""}" in
         fi
         ;;
     set-ovn-remote)
-        for (( i=1; i<=CHASSIS_COUNT; i++ )); do
-            CHASSIS_NAMES+=( "${CHASSIS_PREFIX}${i}" )
-        done
-
-        for (( i=1; i<=GW_COUNT; i++ )); do
-            GW_NAMES+=( "${GW_PREFIX}${i}" )
-        done
-
-        for (( i=1; i<=RELAY_COUNT; i++ )); do
-            RELAY_NAMES+=( "${RELAY_PREFIX}${i}" )
-        done
-
-        set-ovn-remote $2 "yes"
+        set_node_names
+        set-ovn-remote $2 "yes" $3
         ;;
     set-chassis-ovn-remote)
         CHASSIS_NAMES=( "$2" )
         GW_NAMES=( )
         RELAY_NAMES=( )
         CHASSIS_PREFIX=$2
-        set-ovn-remote $3 "no"
+        set-ovn-remote $3 "no" $4
         ;;
     run-command)
-        for (( i=1; i<=CHASSIS_COUNT; i++ )); do
-            CHASSIS_NAMES+=( "${CHASSIS_PREFIX}${i}" )
-        done
-
-        for (( i=1; i<=GW_COUNT; i++ )); do
-            GW_NAMES+=( "${GW_PREFIX}${i}" )
-        done
-
-        for (( i=1; i<=RELAY_COUNT; i++ )); do
-            RELAY_NAMES+=( "${RELAY_PREFIX}${i}" )
-        done
-
+        set_node_names
         shift;
         run-command $@
         ;;
