@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,11 @@ set -o errexit
 
 use_ovn_rpm=$1
 extra_optimize=$2
+
+# When system's python environment is marked as "Externally managed"
+# (PEP 668), this variable is needed to allow pip to install
+# "global" packages.
+export PIP_BREAK_SYSTEM_PACKAGES=1
 
 if [ "$extra_optimize" = "yes" ]; then
     cflags='-g -march=native -O3 -fno-omit-frame-pointer -fPIC'
@@ -82,7 +87,7 @@ $OVS_PKI req+sign ovn switch
 popd
 
 # remove unused packages to make the container light weight.
-dnf autoremove -y
+dnf autoremove -y || apt autoremove -y
 
 # Clean all object files
 if [ "$use_ovn_rpm" = "no" ]; then

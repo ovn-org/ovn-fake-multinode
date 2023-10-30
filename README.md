@@ -27,6 +27,13 @@ This will create 2 container images
 - **ovn/cinc**: base image that gives us the nesting capability
 - **ovn/ovn-multi-node**: built on top of cinc where ovs+ovn is compiled and installed
 
+By default, these container images are built on top of `fedora:latest`. This behavior can be controlled
+by two environment variables:
+
+- `OS_IMAGE`: URL from which the base OCI image is pulled (default: `quay.io/fedora/fedora:latest`)
+- `OS_BASE`: Which OS is used for the base OCI image. Supported values are `fedora` and `ubuntu`
+  (default: `fedora`)
+
 Step 2: Start openvswitch in your host
 
 In order to interconnect the containers that emulate the chassis, we need an underlay network. This step is what provides that.

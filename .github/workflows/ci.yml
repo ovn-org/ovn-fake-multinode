@@ -7,12 +7,26 @@ on:
 
 jobs:
   basic:
+    strategy:
+      matrix:
+        # Run tests of ovn-fake-multinode built on multiple supported base
+        # images.
+        image:
+          # The default behavior without setting "url" and "base" variables
+          # is expected to work and will use "fedora:latest" as a base image.
+          - url: ""
+            base: ""
+          # Latest Ubuntu base image
+          - url: ubuntu:rolling
+            base: ubuntu
     env:
       RUNC_CMD: podman
       OVN_SRC_PATH: ovn_git
       OVS_SRC_PATH: ovn_git/ovs
       # https://github.com/actions/runner-images/issues/6282
       XDG_RUNTIME_DIR: ''
+      OS_IMAGE: ${{ matrix.image.url }}
+      OS_BASE: ${{ matrix.image.base }}
     runs-on: ubuntu-latest
     steps:
       - name: Download ovn-fake-multinode
