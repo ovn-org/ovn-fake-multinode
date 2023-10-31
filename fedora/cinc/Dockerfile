@@ -22,8 +22,6 @@ COPY fedora/cinc/generate_dhclient_script_for_fullstack.sh /tmp/generate_dhclien
 COPY fedora/cinc/install_pkg.sh /install_pkg.sh
 RUN /install_pkg.sh $OS_IMAGE
 
-RUN pip3 -qq install six
-
 RUN mkdir -p /usr/local/bin
 
 CMD ["/usr/sbin/init"]
