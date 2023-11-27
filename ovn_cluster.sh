@@ -14,6 +14,7 @@ RELAY_IMAGE=${RELAY_IMAGE:-"ovn/ovn-multi-node:latest"}
 
 USE_OVN_RPMS="${USE_OVN_RPMS:-no}"
 EXTRA_OPTIMIZE="${EXTRA_OPTIMIZE:-no}"
+OS_BASE=${OS_BASE:-"fedora"}
 OS_IMAGE=${OS_IMAGE:-"quay.io/fedora/fedora:latest"}
 OS_IMAGE_PULL_RETRIES=${OS_IMAGE_PULL_RETRIES:-40}
 OS_IMAGE_PULL_INTERVAL=${OS_IMAGE_PULL_INTERVAL:-5}
@@ -958,14 +959,15 @@ function build-images() {
     sed -i 's/OOMScoreAdjust=-900//' ./dbus.service 2>/dev/null || :
 
     os-image-pull
-    ${RUNC_CMD} build -t ovn/cinc --build-arg OS_IMAGE=${OS_IMAGE} -f fedora/cinc/Dockerfile .
+    ${RUNC_CMD} build -t ovn/cinc --build-arg OS_IMAGE=${OS_IMAGE} \
+    --build-arg OS_BASE=${OS_BASE} -f image/cinc/Dockerfile .
 
     ${RUNC_CMD} build -t ovn/ovn-multi-node --build-arg OVS_SRC_PATH=ovs \
     --build-arg OVN_SRC_PATH=ovn --build-arg USE_OVN_RPMS=${USE_OVN_RPMS} \
     --build-arg EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} \
     --build-arg INSTALL_UTILS_FROM_SOURCES=${INSTALL_UTILS_FROM_SOURCES} \
     --build-arg USE_OVSDB_ETCD=${USE_OVSDB_ETCD} \
-    -f  fedora/ovn/Dockerfile .
+    -f  image/ovn/Dockerfile .
 }
 
 function check-for-ovn-rpms() {

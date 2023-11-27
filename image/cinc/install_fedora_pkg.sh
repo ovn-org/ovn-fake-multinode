@@ -53,6 +53,7 @@ dnf -y --skip-broken install \
   python3-devel \
   python3-pip \
   python3-psutil \
+  python3-six \
   resource-agents \
   tcpdump \
   uuid.x86_64 \
