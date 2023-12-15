@@ -26,6 +26,7 @@ apt install -yq --no-install-recommends \
   libxslt1.1 \
   lksctp-tools \
   libsctp-dev \
+  linux-tools-generic \
   make \
   meson \
   net-tools \
@@ -64,3 +65,24 @@ systemctl mask \
 mkdir -pv /bin
 /tmp/generate_dhclient_script_for_fullstack.sh / || \
     echo "Failed to generate dhclient script for fullstack!"
+
+# Patch perf script.
+# On Ubuntu, '/usr/bin/perf' is a shell script that tries to find perf binary
+# that exactly matches current running kernel. This will break if
+# ovn-fake-multinode container runs on a host with different kernel than the
+# host that built the image.
+# It's no ideal, but since the perf should be backwards compatible, we can
+# circumvent this by linking '/usr/bin/perf' directly to an available
+# binary in '/usr/lib/linux-tools-<version>/perf'
+PERF_PATH=""
+
+for PERF_BIN in $(ls /usr/lib/linux-tools-*/perf); do
+	PERF_PATH=$PERF_BIN
+done
+
+if [ -z "$PERF_PATH" ]; then
+	echo "Failed to find perf binary"
+	exit 1
+fi
+
+ln -s -f "$PERF_PATH" /usr/bin/perf
