@@ -14,7 +14,7 @@ function grab_src {
 }
 
 OVS_GIT_REPO=${OVS_GIT_REPO:-https://github.com/openvswitch/ovs}
-OVS_BRANCH=${OVS_BRANCH:-master}
+OVS_BRANCH=${OVS_BRANCH:-main}
 OVN_GIT_REPO=${GIT_REPO:-https://github.com/ovn-org/ovn}
 OVN_BRANCH=${OVN_BRANCH:-main}
 
