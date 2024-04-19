@@ -152,6 +152,7 @@ EOF
 # NOTE: the rpcbind packages update takes long to complete!
 function install_packages()
 {
+    dnf config-manager --set-enabled powertools
     dnf -y update
     dnf install -y \
         aspell \
@@ -233,6 +234,10 @@ function install_uperf()
         git clone https://github.com/perftool-incubator/bench-uperf bench-uperf_git
         sed -i 's/^exec >uperf-client-stderrout.txt/#exec >uperf-client-stderrout.txt/g' ./bench-uperf_git/uperf-client
         sed -i 's/^exec 2>&1/#exec 2>&1/g' ./bench-uperf_git/uperf-client
+        sed -i 's/\/usr\/bin\/uperf-base/\/vagrant\/bench-uperf_git\/uperf-base/g' ./bench-uperf_git/uperf-client
+	pushd bench-uperf_git
+	git clone https://github.com/perftool-incubator/toolbox.git
+	popd
         chown -R vagrant ./bench-uperf_git
     fi
 }
@@ -365,23 +370,23 @@ function start_ovn_cluster()
 function start_traffic()
 {
     # Start uperf server in tmux
-    if runuser -l vagrant -c "tmux has-session -t uperf_server" 2>/dev/null
+    if tmux has-session -t uperf_server 2>/dev/null
     then
         echo "- uperf tmux session running, please check!!"
     else
         podman exec ovn-chassis-2 dnf install -y lksctp-tools
         echo "- Starting uperf server in tmux session \"uperf_server\""
-        runuser -l vagrant -c /vagrant/provisioning/start_traffic_server.sh
+        . /vagrant/provisioning/start_traffic_server.sh
     fi
 
     # Start traffic in tmux session
-    if runuser -l vagrant -c "tmux has-session -t traffic" 2>/dev/null
+    if tmux has-session -t traffic 2>/dev/null
     then
         echo "- Traffic tmux session running, please check!!"
     else
-        podman exec ovn-chassis-1 dnf install -y lksctp-tools
+        podman exec ovn-chassis-1 dnf install -y jq lksctp-tools
         echo "- Starting traffic in tmux session \"traffic\""
-        runuser -l vagrant -c /vagrant/provisioning/start_traffic.sh
+        . /vagrant/provisioning/start_traffic.sh
     fi
 }
 
@@ -391,11 +396,11 @@ function start_traffic()
 #
 function configure_ovn()
 {
-    ! podman exec ovn-central ovn-nbctl acl-add sw0 to-lport 100 "ip4.src==10.128.2.2" allow-related
-    podman exec ovn-chassis-1 ip netns exec sw0p1 ip link set dev sw0p1 mtu 1440
-    podman exec ovn-chassis-1 ip netns exec sw0p3 ip link set dev sw0p3 mtu 1440
-    podman exec ovn-chassis-2 ip netns exec sw0p4 ip link set dev sw0p4 mtu 1440
-    podman exec ovn-chassis-2 ip netns exec sw1p1 ip link set dev sw1p1 mtu 1440
+    ! podman exec ovn-central-az1-1 ovn-nbctl acl-add sw01 to-lport 100 "ip4.src==10.128.2.2" allow-related
+    podman exec ovn-chassis-1 ip netns exec sw01p1 ip link set dev sw01p1 mtu 1440
+    podman exec ovn-chassis-1 ip netns exec sw01p3 ip link set dev sw01p3 mtu 1440
+    podman exec ovn-chassis-2 ip netns exec sw01p4 ip link set dev sw01p4 mtu 1440
+    podman exec ovn-chassis-2 ip netns exec sw11p1 ip link set dev sw11p1 mtu 1440
 }
 
 
