@@ -41,7 +41,7 @@ apt install -yq --no-install-recommends \
   python3-pip \
   python3-psutil \
   python3-six \
-  resource-agents \
+  resource-agents* \
   tcpdump \
   uuid
 
