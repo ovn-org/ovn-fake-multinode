@@ -36,8 +36,10 @@ $PODMAN_BIN exec -it ovn-gw-1 ping -c 1 -w 1 170.168.0.5
 $PODMAN_BIN exec -it ovn-chassis-1 ip netns
 
 # sw01p1 : dual stack
-$PODMAN_BIN exec -it ovn-chassis-1 ip netns exec sw01p1 ip -4 route > sw01p1_route
-$PODMAN_BIN exec -it ovn-chassis-1 ip netns exec sw01p1 ip -6 route >> sw01p1_route
+$PODMAN_BIN exec -it ovn-chassis-1 \
+    ip netns exec sw01p1 ip --color=never -4 route > sw01p1_route
+$PODMAN_BIN exec -it ovn-chassis-1 \
+    ip netns exec sw01p1 ip --color=never -6 route >> sw01p1_route
 cat sw01p1_route
 grep "11.0.0.0/24 dev sw01p1" sw01p1_route
 grep "default via 11.0.0.1 dev sw01p1" sw01p1_route
