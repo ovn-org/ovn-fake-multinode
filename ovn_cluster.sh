@@ -819,7 +819,7 @@ EOF
     chmod 0755 ${FAKENODE_MNT_DIR}/create_ovn_res.sh
 
     # add ts transit switch.
-    ${RUNC_CMD} exec ${CENTRAL_IC_ID} ovn-ic-nbctl ts-add ts1
+    ${RUNC_CMD} exec ${CENTRAL_IC_ID} ovn-ic-nbctl --may-exist ts-add ts1
     # wait for ovn-ic to kick in
     while sleep 2; do
         ${RUNC_CMD} exec ${CENTRAL_IC_ID} ovn-nbctl ls-list | grep -q ts1 && break
