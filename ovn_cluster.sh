@@ -13,6 +13,7 @@ GW_IMAGE=${GW_IMAGE:-"ovn/ovn-multi-node:latest"}
 RELAY_IMAGE=${RELAY_IMAGE:-"ovn/ovn-multi-node:latest"}
 
 USE_OVN_RPMS="${USE_OVN_RPMS:-no}"
+USE_OVN_DEBS="${USE_OVN_DEBS:-no}"
 EXTRA_OPTIMIZE="${EXTRA_OPTIMIZE:-no}"
 OS_BASE=${OS_BASE:-"fedora"}
 OS_IMAGE=${OS_IMAGE:-"quay.io/fedora/fedora:latest"}
@@ -964,6 +965,7 @@ function build-images() {
 
     ${RUNC_CMD} build -t ovn/ovn-multi-node --build-arg OVS_SRC_PATH=ovs \
     --build-arg OVN_SRC_PATH=ovn --build-arg USE_OVN_RPMS=${USE_OVN_RPMS} \
+    --build-arg USE_OVN_DEBS=${USE_OVN_DEBS} \
     --build-arg EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} \
     --build-arg INSTALL_UTILS_FROM_SOURCES=${INSTALL_UTILS_FROM_SOURCES} \
     --build-arg USE_OVSDB_ETCD=${USE_OVSDB_ETCD} \
@@ -975,10 +977,22 @@ function check-for-ovn-rpms() {
     ls ovn*.rpm > /dev/null 2>&1 || USE_OVN_RPMS=no
 }
 
+function check-for-ovn-debs() {
+    USE_OVN_DEBS=yes
+    ls ovn*.deb > /dev/null 2>&1 || USE_OVN_DEBS=no
+}
+
 function build-images-with-ovn-rpms() {
     mkdir -p ovs
     mkdir -p ovn
     rm -f tst.rpm
+    build-images
+}
+
+function build-images-with-ovn-debs() {
+    mkdir -p ovs
+    mkdir -p ovn
+    rm -f tst.deb
     build-images
 }
 
@@ -1007,8 +1021,10 @@ function build-images-with-ovn-sources() {
     fi
 
     touch tst.rpm
+    touch tst.deb
     build-images
     rm -f tst.rpm
+    rm -f tst.deb
     [ -n "$DO_RM_OVS" ] && rm -rf ovs ||:
     [ -n "$DO_RM_OVN" ] && rm -rf ovn ||:
 }
@@ -1114,10 +1130,17 @@ case "${1:-""}" in
         ;;
     build)
         check-for-ovn-rpms
-        if [ "$USE_OVN_RPMS" == "yes" ]
-        then
-            echo "Building images using OVN rpms"
+        check-for-ovn-debs
+        if [ "$USE_OVN_RPMS" == "yes" ] && [ "$USE_OVN_DEBS" == "yes" ] ; then
+            echo "Do not keep rpm and deb packages on the same directory or enable both package manager!"
+            exit 1
+        fi 
+        if [ "$USE_OVN_RPMS" == "yes" ] ; then
+	    echo "Building images using OVN rpms"
             build-images-with-ovn-rpms
+	elif [ "$USE_OVN_DEBS" == "yes" ] ; then
+            echo "Building images using OVN debs"
+            build-images-with-ovn-debs
         else
             echo "Building images using OVN/OVS sources"
             build-images-with-ovn-sources
