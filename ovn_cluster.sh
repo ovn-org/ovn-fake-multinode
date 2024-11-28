@@ -507,34 +507,35 @@ function start-db-cluster() {
 
 function start-ovn-ic() {
     if [ "$OVN_START_IC_DBS" = "yes" ]; then
-        if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+        if [ -z "$CENTRAL_IC_ID" ]; then
+            CENTRAL_IC_ID="${CENTRAL_NAMES[0]}"-1
+        fi
+
+        ${RUNC_CMD} exec $CENTRAL_IC_ID ${OVNCTL_PATH}  \
+            --db-ic-nb-create-insecure-remote=yes       \
+            --db-ic-sb-create-insecure-remote=yes start_ic_ovsdb
+
+        if [ "$OVN_DB_CLUSTER" = "yes" ] && [ -z "$CENTRAL_IC_IP" ]; then
             CENTRAL_IC_IP=$(awk -v NAME="${CENTRAL_NAMES[0]}" 'match($0, NAME) {print $2}' _ovn_central_1)
-            ${RUNC_CMD} exec "${CENTRAL_NAMES[0]}"-1 ${OVNCTL_PATH}  \
-                --db-ic-nb-create-insecure-remote=yes   \
-                --db-ic-sb-create-insecure-remote=yes start_ic_ovsdb
-        else
+        elif [ -z "$CENTRAL_IC_IP" ]; then
             [ $RELAY_COUNT -gt 0 ] && REMOTE=_ovn_remote_main_db || REMOTE=_ovn_remote
             CENTRAL_IC_IP=$(awk -v NAME="${CENTRAL_NAMES[0]}" 'match($0, NAME) {print $2}' $REMOTE |awk -F: '{print $2}')
-            ${RUNC_CMD} exec "${CENTRAL_NAMES[0]}"-1 ${OVNCTL_PATH}  \
-                --db-ic-nb-create-insecure-remote=yes   \
-                --db-ic-sb-create-insecure-remote=yes start_ic_ovsdb
         fi
-        CENTRAL_IC_ID="${CENTRAL_NAMES[0]}"-1
     elif [ -z "$CENTRAL_IC_IP" ] || [ -z "$CENTRAL_IC_ID" ]; then
         echo "IC DBs not started locally, please specify the IC DBs container name (CENTRAL_IC_ID) and its IP (CENTRAL_IC_IP)"
         exit 1
     fi
 
     for name in "${CENTRAL_NAMES[@]}"; do
-        ${RUNC_CMD} exec ${name}-1 ${OVNCTL_PATH}                     \
-            --ovn-ic-nb-db=tcp:${CENTRAL_IC_IP}:6645                   \
+        ${RUNC_CMD} exec ${name}-1 ${OVNCTL_PATH}                   \
+            --ovn-ic-nb-db=tcp:${CENTRAL_IC_IP}:6645                \
             --ovn-ic-sb-db=tcp:${CENTRAL_IC_IP}:6646 start_ic
         if [ "$OVN_DB_CLUSTER" = "yes" ]; then
-            ${RUNC_CMD} exec ${name}-2 ${OVNCTL_PATH}                   \
-                --ovn-ic-nb-db=tcp:${CENTRAL_IC_IP}:6645                   \
+            ${RUNC_CMD} exec ${name}-2 ${OVNCTL_PATH}               \
+                --ovn-ic-nb-db=tcp:${CENTRAL_IC_IP}:6645            \
                 --ovn-ic-sb-db=tcp:${CENTRAL_IC_IP}:6646 start_ic
-            ${RUNC_CMD} exec ${name}-3 ${OVNCTL_PATH}                   \
-                --ovn-ic-nb-db=tcp:${CENTRAL_IC_IP}:6645                   \
+            ${RUNC_CMD} exec ${name}-3 ${OVNCTL_PATH}               \
+                --ovn-ic-nb-db=tcp:${CENTRAL_IC_IP}:6645            \
                 --ovn-ic-sb-db=tcp:${CENTRAL_IC_IP}:6646 start_ic
         fi
     done
