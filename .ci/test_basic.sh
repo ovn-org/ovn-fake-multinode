@@ -3,8 +3,8 @@
 PODMAN_BIN=${1:-podman}
 
 # Simple configuration sanity checks
-$PODMAN_BIN exec -it ovn-central-az1-1 ovn-nbctl show > nb_show
-$PODMAN_BIN exec -it ovn-central-az1-1 ovn-sbctl show > sb_show
+$PODMAN_BIN exec -it ovn-central-az1 ovn-nbctl show > nb_show
+$PODMAN_BIN exec -it ovn-central-az1 ovn-sbctl show > sb_show
 
 grep "(public1)" nb_show
 grep "(sw01)" nb_show

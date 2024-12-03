@@ -396,7 +396,7 @@ function start_traffic()
 #
 function configure_ovn()
 {
-    ! podman exec ovn-central-az1-1 ovn-nbctl acl-add sw01 to-lport 100 "ip4.src==10.128.2.2" allow-related
+    ! podman exec ovn-central-az1 ovn-nbctl acl-add sw01 to-lport 100 "ip4.src==10.128.2.2" allow-related
     podman exec ovn-chassis-1 ip netns exec sw01p1 ip link set dev sw01p1 mtu 1440
     podman exec ovn-chassis-1 ip netns exec sw01p3 ip link set dev sw01p3 mtu 1440
     podman exec ovn-chassis-2 ip netns exec sw01p4 ip link set dev sw01p4 mtu 1440

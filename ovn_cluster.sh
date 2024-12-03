@@ -175,10 +175,12 @@ function stop() {
         ovs-vsctl --if-exists del-br $OVN_EXT_BR || exit 1
     else
         for name in "${CENTRAL_NAMES[@]}"; do
-            del-ovs-container-ports ${name}-1
             if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+                del-ovs-container-ports ${name}-1
                 del-ovs-container-ports ${name}-2
                 del-ovs-container-ports ${name}-3
+            else
+                del-ovs-container-ports ${name}
             fi
         done
         for name in "${RELAY_NAMES[@]}"; do
@@ -240,7 +242,7 @@ function add-ovs-container-ports() {
                 echo "$name ${REMOTE_PROT}:$ip1:6642,${REMOTE_PROT}:$ip2:6642,${REMOTE_PROT}:$ip3:6642" >> _ovn_remote
             else
                 ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-                ./ovs-runc add-port $br $eth ${name}-1 --ipaddress=${ip}/${cidr}
+                ./ovs-runc add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
                 echo "$name ${REMOTE_PROT}:$ip:6642" >> _ovn_remote
                 (( ip_index += 1))
             fi
@@ -288,10 +290,12 @@ function add-ovs-container-ports() {
 
     if [ "$ovn_central" == "yes" ]; then
         for name in "${CENTRAL_NAMES[@]}"; do
-            ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-1
             if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+                ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-1
                 ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-2
                 ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-3
+            else
+                ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}
             fi
         done
         for name in "${RELAY_NAMES[@]}"; do
@@ -401,10 +405,12 @@ function wait-containers() {
         local done="1"
         if [ "${ovn_central}" == "yes" ]; then
             for name in "${CENTRAL_NAMES[@]}"; do
-                [[ $(count-containers "${name}-1") == "0" ]] && continue
                 if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+                    [[ $(count-containers "${name}-1") == "0" ]] && continue
                     [[ $(count-containers "${name}-2") == "0" ]] && continue
                     [[ $(count-containers "${name}-3") == "0" ]] && continue
+                else
+                    [[ $(count-containers "${name}") == "0" ]] && continue
                 fi
             done
             for name in "${GW_NAMES[@]}"; do
@@ -429,10 +435,12 @@ function provision-db-file() {
     local src=$2
 
     for name in "${CENTRAL_NAMES[@]}"; do
-        ${RUNC_CMD} cp ${src} ${name}-1:/etc/ovn/ovn${db}_db.db
         if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+            ${RUNC_CMD} cp ${src} ${name}-1:/etc/ovn/ovn${db}_db.db
             ${RUNC_CMD} cp ${src} ${name}-2:/etc/ovn/ovn${db}_db.db
             ${RUNC_CMD} cp ${src} ${name}-3:/etc/ovn/ovn${db}_db.db
+        else
+            ${RUNC_CMD} cp ${src} ${name}:/etc/ovn/ovn${db}_db.db
         fi
     done
 }
@@ -527,14 +535,18 @@ function start-ovn-ic() {
     fi
 
     for name in "${CENTRAL_NAMES[@]}"; do
-        ${RUNC_CMD} exec ${name}-1 ${OVNCTL_PATH}                   \
-            --ovn-ic-nb-db=tcp:${CENTRAL_IC_IP}:6645                \
-            --ovn-ic-sb-db=tcp:${CENTRAL_IC_IP}:6646 start_ic
         if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+            ${RUNC_CMD} exec ${name}-1 ${OVNCTL_PATH}               \
+                --ovn-ic-nb-db=tcp:${CENTRAL_IC_IP}:6645            \
+                --ovn-ic-sb-db=tcp:${CENTRAL_IC_IP}:6646 start_ic
             ${RUNC_CMD} exec ${name}-2 ${OVNCTL_PATH}               \
                 --ovn-ic-nb-db=tcp:${CENTRAL_IC_IP}:6645            \
                 --ovn-ic-sb-db=tcp:${CENTRAL_IC_IP}:6646 start_ic
             ${RUNC_CMD} exec ${name}-3 ${OVNCTL_PATH}               \
+                --ovn-ic-nb-db=tcp:${CENTRAL_IC_IP}:6645            \
+                --ovn-ic-sb-db=tcp:${CENTRAL_IC_IP}:6646 start_ic
+        else
+            ${RUNC_CMD} exec ${name} ${OVNCTL_PATH}                 \
                 --ovn-ic-nb-db=tcp:${CENTRAL_IC_IP}:6645            \
                 --ovn-ic-sb-db=tcp:${CENTRAL_IC_IP}:6646 start_ic
         fi
@@ -612,10 +624,12 @@ function start() {
     # Create containers
     if [ "$ovn_central" == "yes" ]; then
         for name in "${CENTRAL_NAMES[@]}"; do
-            start-container "${CENTRAL_IMAGE}" "${name}-1"
             if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+                start-container "${CENTRAL_IMAGE}" "${name}-1"
                 start-container "${CENTRAL_IMAGE}" "${name}-2"
                 start-container "${CENTRAL_IMAGE}" "${name}-3"
+            else
+                start-container "${CENTRAL_IMAGE}" "${name}"
             fi
         done
 
@@ -652,9 +666,10 @@ function start() {
         fi
 
         for name in "${CENTRAL_NAMES[@]}"; do
-            central=${name}-1
+            [ "$OVN_DB_CLUSTER" = "yes" ] && CENTRAL=${name}-1 || CENTRAL=${name}
+
             if [ "$ENABLE_ETCD" == "yes" ]; then
-                central=${name}
+                CENTRAL=${name}
                 echo "Starting ovsdb-etcd in ${name} container"
                 ${RUNC_CMD} exec --detach ${name} bash -c "/run_ovsdb_etcd.sh"
                 sleep 2
@@ -664,22 +679,22 @@ function start() {
             elif [ "$OVN_DB_CLUSTER" = "yes" ]; then
                 start-db-cluster ${name}
             else
-                ${RUNC_CMD} exec ${name}-1 ${OVNCTL_PATH} start_northd
+                ${RUNC_CMD} exec ${CENTRAL} ${OVNCTL_PATH} start_northd
                 sleep 2
             fi
 
             if [ "$ENABLE_SSL" == "yes" ]; then
-                ${RUNC_CMD} exec ${central} ovn-nbctl set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
-                ${RUNC_CMD} exec ${central} ovn-sbctl set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
+                ${RUNC_CMD} exec ${CENTRAL} ovn-nbctl set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
+                ${RUNC_CMD} exec ${CENTRAL} ovn-sbctl set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
             fi
-            ${RUNC_CMD} exec ${central} ovn-nbctl set-connection p${REMOTE_PROT}:6641
-            ${RUNC_CMD} exec ${central} ovn-nbctl set connection . inactivity_probe=180000
+            ${RUNC_CMD} exec ${CENTRAL} ovn-nbctl set-connection p${REMOTE_PROT}:6641
+            ${RUNC_CMD} exec ${CENTRAL} ovn-nbctl set connection . inactivity_probe=180000
 
-            ${RUNC_CMD} exec ${central} ovn-nbctl set NB_Global . name=${central} \
+            ${RUNC_CMD} exec ${CENTRAL} ovn-nbctl set NB_Global . name=${CENTRAL} \
                 options:ic-route-adv=true options:ic-route-learn=true
 
-            ${RUNC_CMD} exec ${central} ovn-sbctl set-connection p${REMOTE_PROT}:6642
-            ${RUNC_CMD} exec ${central} ovn-sbctl set connection . inactivity_probe=180000
+            ${RUNC_CMD} exec ${CENTRAL} ovn-sbctl set-connection p${REMOTE_PROT}:6642
+            ${RUNC_CMD} exec ${CENTRAL} ovn-sbctl set connection . inactivity_probe=180000
         done
 
         # start ovn-ic dbs
@@ -827,7 +842,12 @@ EOF
         ${RUNC_CMD} exec ${CENTRAL_IC_ID} ovn-nbctl ls-list | grep -q ts1 && break
     done
 
-    ${RUNC_CMD} exec ${CENTRAL_PREFIX}${az}-1 bash /data/create_ovn_res.sh $az $ic
+    if [ "$OVN_DB_CLUSTER" = "yes" ]; then
+        ${RUNC_CMD} exec ${CENTRAL_PREFIX}${az}-1 bash /data/create_ovn_res.sh $az $ic
+    else
+        ${RUNC_CMD} exec ${CENTRAL_PREFIX}${az} bash /data/create_ovn_res.sh $az $ic
+    fi
+
 
     cat << EOF > ${FAKENODE_MNT_DIR}/create_fake_vm.sh
 #!/bin/bash

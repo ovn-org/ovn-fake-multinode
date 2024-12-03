@@ -27,6 +27,7 @@ jobs:
       XDG_RUNTIME_DIR: ''
       OS_IMAGE: ${{ matrix.image.url }}
       OS_BASE: ${{ matrix.image.base }}
+      CENTRAL_IC_ID: ovn-central-az1
     runs-on: ubuntu-latest
     steps:
       - name: Download ovn-fake-multinode
