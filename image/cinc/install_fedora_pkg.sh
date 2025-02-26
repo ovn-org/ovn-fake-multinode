@@ -24,6 +24,7 @@ dnf install -y --skip-broken \
   dnf-utils \
   file \
   fping \
+  frr \
   gcc \
   gettext-devel \
   git \
