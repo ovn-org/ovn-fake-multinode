@@ -12,6 +12,7 @@ apt install -yq --no-install-recommends \
   isc-dhcp-client \
   file \
   fping \
+  frr \
   gcc \
   gettext \
   git \
