@@ -45,6 +45,7 @@ apt install -yq --no-install-recommends \
   python3-systemd \
   resource-agents* \
   tcpdump \
+  netcat-traditional \
   uuid
 
 systemctl mask \
