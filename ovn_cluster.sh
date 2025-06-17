@@ -879,7 +879,7 @@ create_fake_vm() {
       ip netns exec \$name dhclient -sf /bin/fullstack-dhclient-script --no-pid -nw \$name
     else
       ip netns exec \$name ip addr add \$ip/\$mask dev \$name
-      ip netns exec \$name ip addr add \$ipv6_addr dev \$name
+      ip netns exec \$name ip addr add \$ipv6_addr dev \$name "nodad"
       ip netns exec \$name ip link set \$name up
       ip netns exec \$name ip route add default via \$gw dev \$name
       ip netns exec \$name ip -6 route add default via \$ipv6_gw dev \$name
