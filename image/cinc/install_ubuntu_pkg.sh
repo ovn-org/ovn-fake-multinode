@@ -2,6 +2,14 @@
 
 export DEBIAN_FRONTEND=noninteractive
 
+# To avoid issues due to non-existent 'syslog' user when installing FRR,
+# manually create it before we try installation.
+#
+# NOTE: this should've been fixed by
+# https://bugs.launchpad.net/juju/+bug/1989168
+# but it doesn't seem to be the case.
+id syslog &> /dev/null || useradd syslog
+
 apt update
 apt install -yq --no-install-recommends \
   autoconf \
