@@ -2,6 +2,14 @@
 
 export DEBIAN_FRONTEND=noninteractive
 
+# To avoid issues due to non-existent 'syslog' user when installing FRR,
+# manually create it before we try installation.
+#
+# NOTE: this should've been fixed by
+# https://bugs.launchpad.net/juju/+bug/1989168
+# but it doesn't seem to be the case.
+id syslog &> /dev/null || useradd syslog
+
 apt update
 apt install -yq --no-install-recommends \
   autoconf \
@@ -84,8 +92,8 @@ for PERF_BIN in $(ls /usr/lib/linux-tools-*/perf); do
 done
 
 if [ -z "$PERF_PATH" ]; then
-	echo "Failed to find perf binary"
-	exit 1
+	echo "Failed to find perf binary, falling back to linux-perf"
+	apt install -yq --no-install-recommends linux-perf
+else
+	ln -s -f "$PERF_PATH" /usr/bin/perf
 fi
-
-ln -s -f "$PERF_PATH" /usr/bin/perf
