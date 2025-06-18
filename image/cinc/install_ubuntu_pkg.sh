@@ -92,8 +92,8 @@ for PERF_BIN in $(ls /usr/lib/linux-tools-*/perf); do
 done
 
 if [ -z "$PERF_PATH" ]; then
-	echo "Failed to find perf binary"
-	exit 1
+	echo "Failed to find perf binary, falling back to linux-perf"
+	apt install -yq --no-install-recommends linux-perf
+else
+	ln -s -f "$PERF_PATH" /usr/bin/perf
 fi
-
-ln -s -f "$PERF_PATH" /usr/bin/perf
