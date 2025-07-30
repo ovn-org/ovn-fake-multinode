@@ -56,32 +56,14 @@ vi ./ovn_cluster.sh
 # Go back to step 3 and have fun!
 ```
 
-### Getting into underlay
+### Testing underlay
 
-A port called *ovnfake-ext* is created in the fake underlay
-network as part of *ovn_cluster.sh start*. You can use that
-as an easy way of getting inside the cluster (via NAT in OVN).
-Look for *ip netns add ovnfake-ext* in *ovn_cluster.sh*.
-An example for doing that is shown here:
+If CREATE_FAKE_VMS=no was not set during build, running the following command
+will check the health of the underlay.
 ```
-sudo ip netns exec ovnfake-ext bash
-ip a
-ip route
-ping -i 1 -c 1 -w 1 172.16.0.110 >/dev/null && \
-   echo 'happy happy, joy joy' || echo sad panda
-exit
+sudo ./.ci/test_basic.sh
 ```
-
-Similarly, a port called *ovnfake-int* is created in the fake node
-network. It can be used to access the emulated chassis.
-Here is an example:
-```
-sudo ip netns exec ovnfake-int bash
-ip a
-ping -i 1 -c 1 -w 1 170.168.0.2 >/dev/null && \
-   echo 'happy happy, joy joy' || echo sad panda
-exit
-```
+You should see "happy happy, joy joy" printed for a successful run
 
 ### Pre-provisioning NB and/or SB databases.
 It's sometime useful to be able to start up a cluster with pre-existing
