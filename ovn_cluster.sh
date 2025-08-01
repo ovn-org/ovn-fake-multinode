@@ -975,7 +975,13 @@ function os-image-pull() {
     exit 1
 }
 
+function cleanup() {
+    [ -n "$DO_RM_OVS" ] && rm -rf ovs ||:
+    [ -n "$DO_RM_OVN" ] && rm -rf ovn ||:
+}
+
 function build-images() {
+    trap cleanup EXIT
     # Copy dbus.service to a place where image build can see it
     cp -v /usr/lib/systemd/system/dbus.service . 2>/dev/null || touch dbus.service
     sed -i 's/OOMScoreAdjust=-900//' ./dbus.service 2>/dev/null || :
@@ -1006,14 +1012,16 @@ function check-for-ovn-debs() {
 function build-images-with-ovn-rpms() {
     mkdir -p ovs
     mkdir -p ovn
-    rm -f tst.rpm
+    DO_RM_OVN='yes'
+    DO_RM_OVN='yes'
     build-images
 }
 
 function build-images-with-ovn-debs() {
     mkdir -p ovs
     mkdir -p ovn
-    rm -f tst.deb
+    DO_RM_OVN='yes'
+    DO_RM_OVN='yes'
     build-images
 }
 
@@ -1041,13 +1049,7 @@ function build-images-with-ovn-sources() {
 	    DO_RM_OVN='yes'
     fi
 
-    touch tst.rpm
-    touch tst.deb
     build-images
-    rm -f tst.rpm
-    rm -f tst.deb
-    [ -n "$DO_RM_OVS" ] && rm -rf ovs ||:
-    [ -n "$DO_RM_OVN" ] && rm -rf ovn ||:
 }
 
 function run-command() {
