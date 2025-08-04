@@ -24,7 +24,9 @@ extra_optimize=$3
 # "global" packages.
 export PIP_BREAK_SYSTEM_PACKAGES=1
 
-if [ "$extra_optimize" = "yes" ]; then
+if [ -n "$OVN_CFLAGS" ]; then
+    cflags="$OVN_CFLAGS"
+elif [ "$extra_optimize" = "yes" ]; then
     cflags='-g -march=native -O3 -fno-omit-frame-pointer -fPIC'
 else
     cflags='-g -O2 -fno-omit-frame-pointer -fPIC'
