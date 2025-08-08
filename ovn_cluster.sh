@@ -993,6 +993,7 @@ function build-images() {
     ${RUNC_CMD} build -t ovn/ovn-multi-node --build-arg OVS_SRC_PATH=ovs \
     --build-arg OVN_SRC_PATH=ovn --build-arg USE_OVN_RPMS=${USE_OVN_RPMS} \
     --build-arg USE_OVN_DEBS=${USE_OVN_DEBS} \
+    --build-arg OVN_CFLAGS="${OVN_CFLAGS}" \
     --build-arg EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} \
     --build-arg INSTALL_UTILS_FROM_SOURCES=${INSTALL_UTILS_FROM_SOURCES} \
     --build-arg USE_OVSDB_ETCD=${USE_OVSDB_ETCD} \

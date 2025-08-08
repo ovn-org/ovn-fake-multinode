@@ -34,6 +34,8 @@ by two environment variables:
 - `OS_BASE`: Which OS is used for the base OCI image. Supported values are `fedora` and `ubuntu`
   (default: `fedora`)
 
+When compiling OVN with `./ovn_cluster.sh build`, you can specify the exact compiler flags to use by exporting an `OVN_CFLAGS` environment variable.
+
 Step 2: Start openvswitch in your host
 
 In order to interconnect the containers that emulate the chassis, we need an underlay network. This step is what provides that.
