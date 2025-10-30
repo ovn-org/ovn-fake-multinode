@@ -32,6 +32,7 @@ apt install -yq --no-install-recommends \
   libcap-dev \
   libreswan \
   libtool \
+  libunbound-dev \
   libxslt1.1 \
   lksctp-tools \
   libsctp-dev \
