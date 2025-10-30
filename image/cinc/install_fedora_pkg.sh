@@ -57,6 +57,7 @@ dnf install -y --skip-broken \
   python3-six \
   resource-agents \
   tcpdump \
+  unbound-devel \
   uuid.x86_64 \
   which  \
   initscripts
