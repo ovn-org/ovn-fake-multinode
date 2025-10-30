@@ -516,7 +516,7 @@ function start-db-cluster() {
 function start-ovn-ic() {
     if [ "$OVN_START_IC_DBS" = "yes" ]; then
         if [ -z "$CENTRAL_IC_ID" ]; then
-            CENTRAL_IC_ID="${CENTRAL_NAMES[0]}"
+	    [ "$OVN_DB_CLUSTER" = "yes" ] && CENTRAL_IC_ID="${CENTRAL_NAMES[0]}-1" || CENTRAL_IC_ID="${CENTRAL_NAMES[0]}"
         fi
 
         ${RUNC_CMD} exec $CENTRAL_IC_ID ${OVNCTL_PATH}  \
