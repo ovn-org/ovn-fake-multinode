@@ -8,7 +8,7 @@ Vagrant.require_version ">=1.7.0"
 
 $bootstrap_centos = <<SCRIPT
 #dnf -y update ||:  ; # save your time. "vagrant box update" is your friend
-dnf -y install git time python3
+dnf -y install cloud-utils-growpart git python3 time
 SCRIPT
 
 $build_images = <<SCRIPT
@@ -26,7 +26,7 @@ Vagrant.configure(2) do |config|
     vm_cpus = ENV['VM_CPUS'] || '4'
 
     config.vm.hostname = "ovnhostvm"
-    config.vm.box = "generic/rocky8"
+    config.vm.box = "centos/stream10"
     config.vm.box_check_update = false
 
     # config.vm.synced_folder "#{ENV['PWD']}", "/vagrant", sshfs_opts_append: "-o nonempty", disabled: false, type: "sshfs"

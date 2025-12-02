@@ -27,9 +27,8 @@ The following set of commands will re-size the image:
 vagrant halt
 qemu-img resize ~/.local/share/libvirt/images/ovn-fake-<XXX>.img +100G
 vagrant up && vagrant ssh
-echo ", +" | sudo sfdisk -N 1 /dev/vda --no-reread
-sudo partprobe
-sudo sudo xfs_growfs /
+sudo growpart /dev/vda 2
+sudo resize2fs /dev/vda2
 exit
 vagrant reload && vagrant ssh
 ```
