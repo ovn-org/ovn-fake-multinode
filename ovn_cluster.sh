@@ -83,6 +83,9 @@ INSTALL_UTILS_FROM_SOURCES="${INSTALL_UTILS_FROM_SOURCES:-no}"
 OVN_NBDB_SRC=${OVN_NBDB_SRC}
 OVN_SBDB_SRC=${OVN_SBDB_SRC}
 
+OVNNBCTL_CMD="ovn-nbctl --no-leader-only"
+OVNSBCTL_CMD="ovn-sbctl --no-leader-only"
+
 function set_node_names() {
     if [ "x$CENTRAL_NAME" == "x" ]; then
         for (( i=1; i<=CENTRAL_COUNT; i++ )); do
@@ -684,17 +687,17 @@ function start() {
             fi
 
             if [ "$ENABLE_SSL" == "yes" ]; then
-                ${RUNC_CMD} exec ${CENTRAL} ovn-nbctl set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
-                ${RUNC_CMD} exec ${CENTRAL} ovn-sbctl set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
+                ${RUNC_CMD} exec ${CENTRAL} ${OVNNBCTL_CMD} set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
+                ${RUNC_CMD} exec ${CENTRAL} ${OVNSBCTL_CMD} set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
             fi
-            ${RUNC_CMD} exec ${CENTRAL} ovn-nbctl set-connection p${REMOTE_PROT}:6641
-            ${RUNC_CMD} exec ${CENTRAL} ovn-nbctl set connection . inactivity_probe=180000
+            ${RUNC_CMD} exec ${CENTRAL} ${OVNNBCTL_CMD} set-connection p${REMOTE_PROT}:6641
+            ${RUNC_CMD} exec ${CENTRAL} ${OVNNBCTL_CMD} set connection . inactivity_probe=180000
 
-            ${RUNC_CMD} exec ${CENTRAL} ovn-nbctl set NB_Global . name=${CENTRAL} \
+            ${RUNC_CMD} exec ${CENTRAL} ${OVNNBCTL_CMD} set NB_Global . name=${CENTRAL} \
                 options:ic-route-adv=true options:ic-route-learn=true
 
-            ${RUNC_CMD} exec ${CENTRAL} ovn-sbctl set-connection p${REMOTE_PROT}:6642
-            ${RUNC_CMD} exec ${CENTRAL} ovn-sbctl set connection . inactivity_probe=180000
+            ${RUNC_CMD} exec ${CENTRAL} ${OVNSBCTL_CMD} set-connection p${REMOTE_PROT}:6642
+            ${RUNC_CMD} exec ${CENTRAL} ${OVNSBCTL_CMD} set connection . inactivity_probe=180000
         done
 
         # start ovn-ic dbs
@@ -751,85 +754,85 @@ set -o errexit
 az=\$1
 ic=\$2
 
-ovn-nbctl ls-add sw0\$az
+${OVNNBCTL_CMD} ls-add sw0\$az
 
 # ovn dhcpd on sw0\$az
-ovn-nbctl set logical_switch sw0\$az \
+${OVNNBCTL_CMD} set logical_switch sw0\$az \
   other_config:subnet="1\$az.0.0.0/24" \
   other_config:exclude_ips="1\$az.0.0.1..1\$az.0.0.2"
-ovn-nbctl dhcp-options-create 1\$az.0.0.0/24
-CIDR_UUID=\$(ovn-nbctl --bare --columns=_uuid find dhcp_options cidr="1\$az.0.0.0/24")
-ovn-nbctl dhcp-options-set-options \$CIDR_UUID \
+${OVNNBCTL_CMD} dhcp-options-create 1\$az.0.0.0/24
+CIDR_UUID=\$(${OVNNBCTL_CMD} --bare --columns=_uuid find dhcp_options cidr="1\$az.0.0.0/24")
+${OVNNBCTL_CMD} dhcp-options-set-options \$CIDR_UUID \
   lease_time=3600 \
   router=1\$az.0.0.1 \
   server_id=1\$az.0.0.1 \
   server_mac=c0:ff:ee:00:00:01
 
-ovn-nbctl lsp-add sw0\$az sw0\$az-port1
-ovn-nbctl lsp-set-addresses sw0\$az-port1 "50:5\$az:00:00:00:03 1\$az.0.0.3 100\$az::3"
-ovn-nbctl lsp-add sw0\$az sw0\$az-port2
-ovn-nbctl lsp-set-addresses sw0\$az-port2 "50:5\$az:00:00:00:04 1\$az.0.0.4 100\$az::4"
+${OVNNBCTL_CMD} lsp-add sw0\$az sw0\$az-port1
+${OVNNBCTL_CMD} lsp-set-addresses sw0\$az-port1 "50:5\$az:00:00:00:03 1\$az.0.0.3 100\$az::3"
+${OVNNBCTL_CMD} lsp-add sw0\$az sw0\$az-port2
+${OVNNBCTL_CMD} lsp-set-addresses sw0\$az-port2 "50:5\$az:00:00:00:04 1\$az.0.0.4 100\$az::4"
 
 # Create ports in sw0\$az that will use dhcp from ovn
-ovn-nbctl lsp-add sw0\$az sw0\$az-port3
-ovn-nbctl lsp-set-addresses sw0\$az-port3 "50:5\$az:00:00:00:05 dynamic"
-ovn-nbctl lsp-set-dhcpv4-options sw0\$az-port3 \$CIDR_UUID
-ovn-nbctl lsp-add sw0\$az sw0\$az-port4
-ovn-nbctl lsp-set-addresses sw0\$az-port4 "50:5\$az:00:00:00:06 dynamic"
-ovn-nbctl lsp-set-dhcpv4-options sw0\$az-port4 \$CIDR_UUID
+${OVNNBCTL_CMD} lsp-add sw0\$az sw0\$az-port3
+${OVNNBCTL_CMD} lsp-set-addresses sw0\$az-port3 "50:5\$az:00:00:00:05 dynamic"
+${OVNNBCTL_CMD} lsp-set-dhcpv4-options sw0\$az-port3 \$CIDR_UUID
+${OVNNBCTL_CMD} lsp-add sw0\$az sw0\$az-port4
+${OVNNBCTL_CMD} lsp-set-addresses sw0\$az-port4 "50:5\$az:00:00:00:06 dynamic"
+${OVNNBCTL_CMD} lsp-set-dhcpv4-options sw0\$az-port4 \$CIDR_UUID
 
 # Create the second logical switch with one port
-ovn-nbctl ls-add sw1\$az
-ovn-nbctl lsp-add sw1\$az sw1\$az-port1
-ovn-nbctl lsp-set-addresses sw1\$az-port1 "40:5\$az:00:00:00:03 2\$az.0.0.3 200\$az::3"
+${OVNNBCTL_CMD} ls-add sw1\$az
+${OVNNBCTL_CMD} lsp-add sw1\$az sw1\$az-port1
+${OVNNBCTL_CMD} lsp-set-addresses sw1\$az-port1 "40:5\$az:00:00:00:03 2\$az.0.0.3 200\$az::3"
 
 # Create a logical router and attach both logical switches
-ovn-nbctl lr-add lr\$az
-ovn-nbctl lrp-add lr\$az lr\$az-sw0\$az 00:0\$az:00:00:ff:01 1\$az.0.0.1/24 100\$az::a/64
-ovn-nbctl lsp-add sw0\$az sw0\$az-lr\$az
-ovn-nbctl lsp-set-type sw0\$az-lr\$az router
-ovn-nbctl lsp-set-addresses sw0\$az-lr\$az router
-ovn-nbctl lsp-set-options sw0\$az-lr\$az router-port=lr\$az-sw0\$az
+${OVNNBCTL_CMD} lr-add lr\$az
+${OVNNBCTL_CMD} lrp-add lr\$az lr\$az-sw0\$az 00:0\$az:00:00:ff:01 1\$az.0.0.1/24 100\$az::a/64
+${OVNNBCTL_CMD} lsp-add sw0\$az sw0\$az-lr\$az
+${OVNNBCTL_CMD} lsp-set-type sw0\$az-lr\$az router
+${OVNNBCTL_CMD} lsp-set-addresses sw0\$az-lr\$az router
+${OVNNBCTL_CMD} lsp-set-options sw0\$az-lr\$az router-port=lr\$az-sw0\$az
 
-ovn-nbctl lrp-add lr\$az lr\$az-sw1\$az 00:0\$az:00:00:ff:02 2\$az.0.0.1/24 200\$az::a/64
-ovn-nbctl lsp-add sw1\$az sw1\$az-lr\$az
-ovn-nbctl lsp-set-type sw1\$az-lr\$az router
-ovn-nbctl lsp-set-addresses sw1\$az-lr\$az router
-ovn-nbctl lsp-set-options sw1\$az-lr\$az router-port=lr\$az-sw1\$az
+${OVNNBCTL_CMD} lrp-add lr\$az lr\$az-sw1\$az 00:0\$az:00:00:ff:02 2\$az.0.0.1/24 200\$az::a/64
+${OVNNBCTL_CMD} lsp-add sw1\$az sw1\$az-lr\$az
+${OVNNBCTL_CMD} lsp-set-type sw1\$az-lr\$az router
+${OVNNBCTL_CMD} lsp-set-addresses sw1\$az-lr\$az router
+${OVNNBCTL_CMD} lsp-set-options sw1\$az-lr\$az router-port=lr\$az-sw1\$az
 
-ovn-nbctl ls-add public\$az
-ovn-nbctl lrp-add lr\$az lr\$az-public\$az 00:0\$az:20:20:12:13 172.16.\$az.100/24 300\$az::a/64
-ovn-nbctl lsp-add public\$az public\$az-lr\$az
-ovn-nbctl lsp-set-type public\$az-lr\$az router
-ovn-nbctl lsp-set-addresses public\$az-lr\$az router
-ovn-nbctl lsp-set-options public\$az-lr\$az router-port=lr\$az-public\$az
+${OVNNBCTL_CMD} ls-add public\$az
+${OVNNBCTL_CMD} lrp-add lr\$az lr\$az-public\$az 00:0\$az:20:20:12:13 172.16.\$az.100/24 300\$az::a/64
+${OVNNBCTL_CMD} lsp-add public\$az public\$az-lr\$az
+${OVNNBCTL_CMD} lsp-set-type public\$az-lr\$az router
+${OVNNBCTL_CMD} lsp-set-addresses public\$az-lr\$az router
+${OVNNBCTL_CMD} lsp-set-options public\$az-lr\$az router-port=lr\$az-public\$az
 
 # localnet port
-ovn-nbctl lsp-add public\$az ln-public\$az
-ovn-nbctl lsp-set-type ln-public\$az localnet
-ovn-nbctl lsp-set-addresses ln-public\$az unknown
-ovn-nbctl lsp-set-options ln-public\$az network_name=public
+${OVNNBCTL_CMD} lsp-add public\$az ln-public\$az
+${OVNNBCTL_CMD} lsp-set-type ln-public\$az localnet
+${OVNNBCTL_CMD} lsp-set-addresses ln-public\$az unknown
+${OVNNBCTL_CMD} lsp-set-options ln-public\$az network_name=public
 
 # schedule the gw router port to a chassis.
-ovn-nbctl lrp-set-gateway-chassis lr\$az-public\$az ovn-gw-\$az 20
+${OVNNBCTL_CMD} lrp-set-gateway-chassis lr\$az-public\$az ovn-gw-\$az 20
 
 # Create NAT entries for the ports
 
 # sw0\$az-port1
-ovn-nbctl lr-nat-add lr\$az dnat_and_snat 172.16.\$az.110 1\$az.0.0.3 sw0\$az-port1 30:5\$az:00:00:00:03
-ovn-nbctl lr-nat-add lr\$az dnat_and_snat 300\$az::c 100\$az::3 sw0\$az-port1 40:5\$az:00:00:00:03
+${OVNNBCTL_CMD} lr-nat-add lr\$az dnat_and_snat 172.16.\$az.110 1\$az.0.0.3 sw0\$az-port1 30:5\$az:00:00:00:03
+${OVNNBCTL_CMD} lr-nat-add lr\$az dnat_and_snat 300\$az::c 100\$az::3 sw0\$az-port1 40:5\$az:00:00:00:03
 # sw1\$az-port1
-ovn-nbctl lr-nat-add lr\$az dnat_and_snat 172.16.\$az.120 2\$az.0.0.3 sw1\$az-port1 30:5\$az:00:00:00:04
-ovn-nbctl lr-nat-add lr\$az dnat_and_snat 300\$az::d 200\$az::3 sw1\$az-port1 40:5\$az:00:00:00:04
+${OVNNBCTL_CMD} lr-nat-add lr\$az dnat_and_snat 172.16.\$az.120 2\$az.0.0.3 sw1\$az-port1 30:5\$az:00:00:00:04
+${OVNNBCTL_CMD} lr-nat-add lr\$az dnat_and_snat 300\$az::d 200\$az::3 sw1\$az-port1 40:5\$az:00:00:00:04
 
 # Add a snat entry
-ovn-nbctl lr-nat-add lr\$az snat 172.16.\$az.100 1\$az.0.0.0/24
-ovn-nbctl lr-nat-add lr\$az snat 172.16.\$az.100 2\$az.0.0.0/24
+${OVNNBCTL_CMD} lr-nat-add lr\$az snat 172.16.\$az.100 1\$az.0.0.0/24
+${OVNNBCTL_CMD} lr-nat-add lr\$az snat 172.16.\$az.100 2\$az.0.0.0/24
 
 if [ "\$ic" == "yes" ]; then
-    ovn-nbctl lrp-add lr\$az lr\$az-ts1 aa:aa:aa:aa:aa:0\$az 5.0.0.\$az/24
-    ovn-nbctl lsp-add ts1 ts1-lr\$az -- lsp-set-addresses ts1-lr\$az -- lsp-set-type ts1-lr\$az router -- lsp-set-options ts1-lr\$az  router-port=lr\$az-ts1
-    ovn-nbctl lrp-set-gateway-chassis lr\$az-ts1 ovn-gw-\$az 1
+    ${OVNNBCTL_CMD} lrp-add lr\$az lr\$az-ts1 aa:aa:aa:aa:aa:0\$az 5.0.0.\$az/24
+    ${OVNNBCTL_CMD} lsp-add ts1 ts1-lr\$az -- lsp-set-addresses ts1-lr\$az -- lsp-set-type ts1-lr\$az router -- lsp-set-options ts1-lr\$az  router-port=lr\$az-ts1
+    ${OVNNBCTL_CMD} lrp-set-gateway-chassis lr\$az-ts1 ovn-gw-\$az 1
 fi
 
 EOF
@@ -839,7 +842,7 @@ EOF
     ${RUNC_CMD} exec ${CENTRAL_IC_ID} ovn-ic-nbctl --may-exist ts-add ts1
     # wait for ovn-ic to kick in
     while sleep 2; do
-        ${RUNC_CMD} exec ${CENTRAL_IC_ID} ovn-nbctl ls-list | grep -q ts1 && break
+        ${RUNC_CMD} exec ${CENTRAL_IC_ID} ${OVNNBCTL_CMD} ls-list | grep -q ts1 && break
     done
 
     if [ "$OVN_DB_CLUSTER" = "yes" ]; then
