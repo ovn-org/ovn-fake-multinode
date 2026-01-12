@@ -52,7 +52,6 @@ apt install -yq --no-install-recommends \
   python3-psutil \
   python3-six \
   python3-systemd \
-  resource-agents* \
   tcpdump \
   netcat-traditional \
   uuid
