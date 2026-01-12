@@ -492,6 +492,12 @@ function start-db-cluster() {
     --db-nb-cluster-remote-proto=${REMOTE_PROT} --db-sb-cluster-remote-proto=${REMOTE_PROT} \
     $SSL_ARGS start_ovsdb
 
+    ${RUNC_CMD} exec ${CENTRAL} ${OVNNBCTL_CMD} set-connection p${REMOTE_PROT}:6641
+    ${RUNC_CMD} exec ${CENTRAL} ${OVNNBCTL_CMD} set connection . inactivity_probe=180000
+
+    ${RUNC_CMD} exec ${CENTRAL} ${OVNSBCTL_CMD} set-connection p${REMOTE_PROT}:6642
+    ${RUNC_CMD} exec ${CENTRAL} ${OVNSBCTL_CMD} set connection . inactivity_probe=180000
+
     # This can be improved.
     sleep 3
 
@@ -683,6 +689,12 @@ function start() {
                 start-db-cluster ${name}
             else
                 ${RUNC_CMD} exec ${CENTRAL} ${OVNCTL_PATH} start_northd
+
+                ${RUNC_CMD} exec ${CENTRAL} ${OVNNBCTL_CMD} set-connection p${REMOTE_PROT}:6641
+                ${RUNC_CMD} exec ${CENTRAL} ${OVNNBCTL_CMD} set connection . inactivity_probe=180000
+
+                ${RUNC_CMD} exec ${CENTRAL} ${OVNSBCTL_CMD} set-connection p${REMOTE_PROT}:6642
+                ${RUNC_CMD} exec ${CENTRAL} ${OVNSBCTL_CMD} set connection . inactivity_probe=180000
                 sleep 2
             fi
 
@@ -690,14 +702,9 @@ function start() {
                 ${RUNC_CMD} exec ${CENTRAL} ${OVNNBCTL_CMD} set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
                 ${RUNC_CMD} exec ${CENTRAL} ${OVNSBCTL_CMD} set-ssl ${SSL_CERTS_PATH}/ovn-privkey.pem  ${SSL_CERTS_PATH}/ovn-cert.pem ${SSL_CERTS_PATH}/pki/switchca/cacert.pem
             fi
-            ${RUNC_CMD} exec ${CENTRAL} ${OVNNBCTL_CMD} set-connection p${REMOTE_PROT}:6641
-            ${RUNC_CMD} exec ${CENTRAL} ${OVNNBCTL_CMD} set connection . inactivity_probe=180000
 
             ${RUNC_CMD} exec ${CENTRAL} ${OVNNBCTL_CMD} set NB_Global . name=${CENTRAL} \
                 options:ic-route-adv=true options:ic-route-learn=true
-
-            ${RUNC_CMD} exec ${CENTRAL} ${OVNSBCTL_CMD} set-connection p${REMOTE_PROT}:6642
-            ${RUNC_CMD} exec ${CENTRAL} ${OVNSBCTL_CMD} set connection . inactivity_probe=180000
         done
 
         # start ovn-ic dbs
