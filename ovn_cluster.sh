@@ -964,12 +964,20 @@ function set-ovn-remote() {
     done
 }
 
-# This function only starts chassis containers (running ovn-controller)
+function prepare-tcp-servers() {
+    for name in "${CHASSIS_NAMES[@]}"; do
+        cp $(pwd)/tcp_metadata_server.py ${FAKENODE_MNT_DIR}/tcp_metadata_server.py
+    done
+}
+
+# This function starts chassis containers (which run ovn-controller) and
+# sets up the infrastructure required for a TCP server to run on chassis.
 function start-chassis() {
     ovn_central=no
     ovn_remote=$1
     ovn_add_chassis=$2
     start $ovn_central $ovn_remote $ovn_add_chassis
+    prepare-tcp-servers
 }
 
 function os-image-pull() {
@@ -1146,6 +1154,10 @@ case "${1:-""}" in
     start-chassis)
         for (( i=1; i<=CHASSIS_COUNT; i++ )); do
             CHASSIS_NAMES+=( "${CHASSIS_PREFIX}${i}" )
+        done
+        # Sets up the infrastructure required for a TCP server to run on chassis
+        for name in "${CHASSIS_NAMES[@]}"; do
+             cp $(pwd)/tcp_metadata_server.py ${FAKENODE_MNT_DIR}/tcp_metadata_server.py
         done
         start-chassis $2 "no"
         ;;
