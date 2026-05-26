@@ -206,7 +206,7 @@ function stop() {
 
 function setup-ovs-in-host() {
     ovs-vsctl br-exists $OVN_BR || ovs-vsctl add-br $OVN_BR || exit 1
-    ovs-vsctl br-exists $OVN_BR || ovs-vsctl add-br $OVN_EXT_BR || exit 1
+    ovs-vsctl br-exists $OVN_EXT_BR || ovs-vsctl add-br $OVN_EXT_BR || exit 1
 }
 
 function add-ovs-container-ports() {
