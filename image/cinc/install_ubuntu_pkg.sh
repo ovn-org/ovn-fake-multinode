@@ -52,6 +52,7 @@ apt install -yq --no-install-recommends \
   python3-psutil \
   python3-six \
   python3-systemd \
+  python3-pyroute2 \
   tcpdump \
   netcat-traditional \
   uuid
