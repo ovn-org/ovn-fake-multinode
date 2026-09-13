@@ -143,17 +143,12 @@ function count-containers() {
 function start-container() {
   local image=$1
   local name=$2
-  local vagrant_mount=""
 
   local volumes run_cmd
   volumes=""
 
-  if [ -d "/vagrant" ]; then
-      vagrant_mount="-v /vagrant:/vagrant"
-  fi
-
   ${RUNC_CMD} run  -dt ${volumes} -v "${FAKENODE_MNT_DIR}:/data" --privileged \
-              $vagrant_mount --name="${name}" --hostname="${name}" \
+              --name="${name}" --hostname="${name}" \
               "${image}" > /dev/null
 
   # Make sure ipv6 in container is enabled if we will be using it
