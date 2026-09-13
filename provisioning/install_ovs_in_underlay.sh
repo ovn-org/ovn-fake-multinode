@@ -5,8 +5,8 @@
 set -o xtrace
 set -o errexit
 
-dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
-curl -L http://trunk.rdoproject.org/centos8/delorean-deps.repo | sudo tee /etc/yum.repos.d/delorean-deps.repo
+dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+curl -L http://trunk.rdoproject.org/centos10/delorean-deps.repo | sudo tee /etc/yum.repos.d/delorean-deps.repo
 
 ##dnf install -y libibverbs
 ##dnf install -y openvswitch openvswitch-ovn-central openvswitch-ovn-host

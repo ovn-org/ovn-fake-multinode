@@ -88,9 +88,10 @@ function check_system()
         echo "  vagrant halt"
         echo "  qemu-img resize ~/.local/share/libvirt/images/ovn-fake-<XXX>.img +100G"
         echo "  vagrant up && vagrant ssh"
-        echo "  echo \", +\" | sudo sfdisk -N 1 /dev/vda --no-reread"
-        echo "  sudo partprobe"
-        echo "  sudo sudo xfs_growfs /"
+        echo "  sudo growpart /dev/vda 2"
+        echo "  sudo resize2fs /dev/vda2"
+        echo "  exit"
+        echo "  vagrant reload && vagrant ssh"
         exit
     fi
 
@@ -152,11 +153,10 @@ EOF
 # NOTE: the rpcbind packages update takes long to complete!
 function install_packages()
 {
-    dnf config-manager --set-enabled powertools
+    dnf config-manager --set-enabled crb
     dnf -y update
     dnf install -y \
         aspell \
-        aspell-en \
         autoconf \
         automake \
         bc \
@@ -224,6 +224,7 @@ function install_uperf()
 
     if ! [ -f "/vagrant/uperf_git/src/uperf" ]; then
         cd /vagrant/uperf_git/ || exit
+        autoreconf --install
         ./configure
         make -j "$(nproc)"
         cd /vagrant/ || exit

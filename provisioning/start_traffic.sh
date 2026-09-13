@@ -27,4 +27,4 @@ tmux new -s traffic \; \
   select-pane -t 7  \; \
   send-keys 'podman exec -it ovn-chassis-1 ip netns exec sw01p3 ping 21.0.0.3 -t 1' C-m \; \
   select-pane -t 8  \; \
-  send-keys 'podman exec -it ovn-chassis-1 ip netns exec sw01p1 bash -c "export TOOLBOX_HOME=/vagrant/bench-uperf_git/toolbox; export RS_CS_LABEL=1-1; export PATH=/vagrant/uperf_git/src:${PATH}; cp -rv /vagrant/bench-uperf_git/xml-files/ /tmp/; /vagrant/bench-uperf_git/uperf-client --test-type=rr --wsize=64 --rsize=1024 --duration=3600 --protocol=tcp --nthreads=1024 --remotehost=11.0.0.6"' C-m \;
+  send-keys 'podman exec -it ovn-chassis-1 ip netns exec sw01p1 bash -c "export TOOLBOX_HOME=/vagrant/bench-uperf_git/toolbox; export RS_CS_LABEL=1-1; export PATH=/vagrant/uperf_git/src:${PATH}; cp -rv /vagrant/bench-uperf_git/xml-files/ /tmp/; /vagrant/bench-uperf_git/uperf-client --test-type=rr --wsize=64 --rsize=1024 --duration=3600 --protocol=tcp --nthreads=128 --remotehost=11.0.0.6"' C-m \;
