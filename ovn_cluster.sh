@@ -65,6 +65,10 @@ CENTRAL_IC_ID="${CENTRAL_IC_ID:-}"
 # https://man7.org/linux/man-pages/man5/ovs-vswitchd.conf.db.5.html#Bridge_TABLE
 OVN_DP_TYPE="${OVN_DP_TYPE:-system}"
 
+# If INLINE_BR_EX set to 'yes' then eth1 on gw and computes is an internal
+# ovs port attached to br-ex.
+INLINE_BR_EX="${INLINE_BR_EX:-no}"
+
 ENABLE_SSL="${ENABLE_SSL:=yes}"
 ENABLE_ETCD="${ENABLE_ETCD:=no}"
 REMOTE_PROT=ssl
@@ -197,6 +201,8 @@ function stop() {
         done
     fi
 
+    rm -f _ovn_ip_*
+
     echo "Stopping OVN cluster"
     # Delete the containers
     for cid in $( ${RUNC_CMD} ps -qa --filter "name=${CENTRAL_PREFIX}|${GW_PREFIX}|${CHASSIS_PREFIX}" ); do
@@ -205,8 +211,23 @@ function stop() {
 }
 
 function setup-ovs-in-host() {
-    ovs-vsctl br-exists $OVN_BR || ovs-vsctl add-br $OVN_BR || exit 1
+    if [ "$INLINE_BR_EX" != "yes" ]; then
+        ovs-vsctl br-exists $OVN_BR || ovs-vsctl add-br $OVN_BR || exit 1
+    fi
     ovs-vsctl br-exists $OVN_EXT_BR || ovs-vsctl add-br $OVN_EXT_BR || exit 1
+}
+
+function add-mgmt-port() {
+    local br=$1
+    local eth=$2
+    local name=$3
+    local ip_cidr=$4
+
+    if [ "$INLINE_BR_EX" = "yes" ]; then
+        echo "${ip_cidr}" > _ovn_ip_${name}
+    else
+        ./ovs-runc add-port $br $eth ${name} --ipaddress=${ip_cidr}
+    fi
 }
 
 function add-ovs-container-ports() {
@@ -228,24 +249,24 @@ function add-ovs-container-ports() {
         for name in "${CENTRAL_NAMES[@]}"; do
             if [ "$OVN_DB_CLUSTER" = "yes" ]; then
                 ip1=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-                ./ovs-runc add-port $br $eth ${name}-1 --ipaddress=${ip1}/${cidr}
+                add-mgmt-port $br $eth ${name}-1 ${ip1}/${cidr}
                 echo "$name $ip1" >> _ovn_central_1
                 (( ip_index += 1))
 
                 ip2=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-                ./ovs-runc add-port $br $eth ${name}-2 --ipaddress=${ip2}/${cidr}
+                add-mgmt-port $br $eth ${name}-2 ${ip2}/${cidr}
                 echo "$name $ip2" >> _ovn_central_2
                 (( ip_index += 1))
 
                 ip3=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-                ./ovs-runc add-port $br $eth ${name}-3 --ipaddress=${ip3}/${cidr}
+                add-mgmt-port $br $eth ${name}-3 ${ip3}/${cidr}
                 echo "$name $ip3" >> _ovn_central_3
                 (( ip_index += 1))
 
                 echo "$name ${REMOTE_PROT}:$ip1:6642,${REMOTE_PROT}:$ip2:6642,${REMOTE_PROT}:$ip3:6642" >> _ovn_remote
             else
                 ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-                ./ovs-runc add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
+                add-mgmt-port $br $eth ${name} ${ip}/${cidr}
                 echo "$name ${REMOTE_PROT}:$ip:6642" >> _ovn_remote
                 (( ip_index += 1))
             fi
@@ -253,7 +274,7 @@ function add-ovs-container-ports() {
 
         for name in "${GW_NAMES[@]}"; do
             ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-            ./ovs-runc add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
+            add-mgmt-port $br $eth ${name} ${ip}/${cidr}
             (( ip_index += 1))
         done
 
@@ -273,7 +294,7 @@ function add-ovs-container-ports() {
                 fi
 
                 ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-                ./ovs-runc add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
+                add-mgmt-port $br $eth ${name} ${ip}/${cidr}
                 relay_remotes=$relay_remotes",${REMOTE_PROT}:$ip:6642"
                 (( ip_index += 1))
             done
@@ -287,23 +308,38 @@ function add-ovs-container-ports() {
 
     for name in "${CHASSIS_NAMES[@]}"; do
         ip=$(./ip_gen.py $ip_range/$cidr $ip_start $ip_index)
-        ./ovs-runc add-port $br $eth ${name} --ipaddress=${ip}/${cidr}
+        add-mgmt-port $br $eth ${name} ${ip}/${cidr}
         (( ip_index += 1))
     done
 
     if [ "$ovn_central" == "yes" ]; then
         for name in "${CENTRAL_NAMES[@]}"; do
             if [ "$OVN_DB_CLUSTER" = "yes" ]; then
-                ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-1
-                ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-2
-                ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-3
+                if [ "$INLINE_BR_EX" = "yes" ]; then
+                    ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-1 --ipaddress=$(cat _ovn_ip_${name}-1)
+                    ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-2 --ipaddress=$(cat _ovn_ip_${name}-2)
+                    ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-3 --ipaddress=$(cat _ovn_ip_${name}-3)
+                else
+                    ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-1
+                    ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-2
+                    ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}-3
+                fi
+            else
+                if [ "$INLINE_BR_EX" = "yes" ]; then
+                    ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name} --ipaddress=$(cat _ovn_ip_${name})
+                else
+                    ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}
+                fi
+            fi
+        done
+        for name in "${RELAY_NAMES[@]}"; do
+            if [ "$INLINE_BR_EX" = "yes" ]; then
+                ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name} --ipaddress=$(cat _ovn_ip_${name})
             else
                 ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}
             fi
         done
-        for name in "${RELAY_NAMES[@]}"; do
-            ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}
-        done
+
         for name in "${GW_NAMES[@]}"; do
             ./ovs-runc add-port ${OVN_EXT_BR} eth2 ${name}
         done
@@ -317,6 +353,7 @@ function add-ovs-container-ports() {
 function del-ovs-container-ports() {
     local name=$1
 
+    # Always attempt eth1 cleanup: cluster may have been started without INLINE_BR_EX.
     ./ovs-runc del-port $OVN_BR eth1 ${name} || :
     ./ovs-runc del-port $OVN_EXT_BR eth2 ${name} || :
 }
@@ -337,16 +374,20 @@ ovn_remote=\$2
 is_gw=\$3
 ovn_monitor_all=\$4
 ovn_dp_type=\$5
-
-if [ "\$eth" = "" ]; then
-    eth=eth1
-fi
+mgmt_ip_cidr=\$6
 
 if [ "\$ovn_remote" = "none" ]; then
     ovn_remote="tcp:170.168.0.2:6642"
 fi
 
-ip=\`ip addr show \$eth | grep inet | grep -v inet6 | awk '{print \$2}' | cut -d'/' -f1\`
+if [ -n "\$mgmt_ip_cidr" ]; then
+    ip=\$(echo \$mgmt_ip_cidr | cut -d'/' -f1)
+else
+    if [ "\$eth" = "" ]; then
+        eth=eth1
+    fi
+    ip=\`ip addr show \$eth | grep inet | grep -v inet6 | awk '{print \$2}' | cut -d'/' -f1\`
+fi
 
 ovs-vsctl set open . external_ids:ovn-encap-ip=\$ip
 ovs-vsctl set open . external-ids:ovn-encap-type=geneve
@@ -372,6 +413,12 @@ ovs-vsctl set open_vswitch . external_ids:ovn-is-interconn=true
 ip link set eth2 down
 ovs-vsctl add-port br-ex eth2
 ip link set eth2 up
+
+if [ -n "\$mgmt_ip_cidr" ]; then
+    ovs-vsctl add-port br-ex eth1 -- set interface eth1 type=internal
+    ip addr add \$mgmt_ip_cidr dev eth1
+    ip link set eth1 up
+fi
 EOF
 
     chmod 0755 ${FAKENODE_MNT_DIR}/configure_ovn.sh
@@ -383,8 +430,12 @@ EOF
             if [ "$ovn_remote_gw" == "none" -a -e _ovn_remote ]; then
                 ovn_remote_gw="$(awk -v idx=$index 'NR==idx {print $2}' _ovn_remote)"
             fi
+            mgmt_ip=""
+            if [ "$INLINE_BR_EX" = "yes" ]; then
+                mgmt_ip=$(cat _ovn_ip_${name})
+            fi
             ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 \
-                ${ovn_remote_gw} is_gw ${ovn_monitor_all} ${ovn_dp_type}
+                ${ovn_remote_gw} is_gw ${ovn_monitor_all} ${ovn_dp_type} ${mgmt_ip}
                 index=$((index % $CENTRAL_COUNT + 1))
         done
     fi
@@ -395,8 +446,12 @@ EOF
         if [ "$ovn_remote_ch" == "none" -a -e _ovn_remote ]; then
             ovn_remote_ch="$(awk -v idx=$index 'NR==idx {print $2}' _ovn_remote)"
         fi
+        mgmt_ip=""
+        if [ "$INLINE_BR_EX" = "yes" ]; then
+            mgmt_ip=$(cat _ovn_ip_${name})
+        fi
         ${RUNC_CMD} exec ${name} bash /data/configure_ovn.sh eth1 \
-            ${ovn_remote_ch} not_gw ${ovn_monitor_all} ${ovn_dp_type}
+            ${ovn_remote_ch} not_gw ${ovn_monitor_all} ${ovn_dp_type} ${mgmt_ip}
             index=$((index % $CENTRAL_COUNT + 1))
     done
 }
@@ -922,9 +977,15 @@ EOF
     ip netns exec ovnfake-ext$az ip link set ovnfake-ext$az up
     ip netns exec ovnfake-ext$az ip route add default via 172.16.$az.100
 
-    echo "Creating a fake VM in the ovs bridge ${OVN_BR}"
+    local mgmt_br
+    if [ "$INLINE_BR_EX" = "yes" ]; then
+        mgmt_br=${OVN_EXT_BR}
+    else
+        mgmt_br=${OVN_BR}
+    fi
+    echo "Creating a fake VM in the ovs bridge ${mgmt_br}"
     ip netns add ovnfake-int$az
-    ovs-vsctl add-port ${OVN_BR} ovnfake-int$az -- set interface ovnfake-int$az type=internal
+    ovs-vsctl add-port ${mgmt_br} ovnfake-int$az -- set interface ovnfake-int$az type=internal
     ip link set ovnfake-int$az netns ovnfake-int$az
     ip netns exec ovnfake-int$az ip link set lo up
     ip netns exec ovnfake-int$az ip link set ovnfake-int$az address 30:5$az:00:00:00:60
