@@ -818,30 +818,10 @@ ic=\$2
 
 ${OVNNBCTL_CMD} ls-add sw0\$az
 
-# ovn dhcpd on sw0\$az
-${OVNNBCTL_CMD} set logical_switch sw0\$az \
-  other_config:subnet="1\$az.0.0.0/24" \
-  other_config:exclude_ips="1\$az.0.0.1..1\$az.0.0.2"
-${OVNNBCTL_CMD} dhcp-options-create 1\$az.0.0.0/24
-CIDR_UUID=\$(${OVNNBCTL_CMD} --bare --columns=_uuid find dhcp_options cidr="1\$az.0.0.0/24")
-${OVNNBCTL_CMD} dhcp-options-set-options \$CIDR_UUID \
-  lease_time=3600 \
-  router=1\$az.0.0.1 \
-  server_id=1\$az.0.0.1 \
-  server_mac=c0:ff:ee:00:00:01
-
 ${OVNNBCTL_CMD} lsp-add sw0\$az sw0\$az-port1
 ${OVNNBCTL_CMD} lsp-set-addresses sw0\$az-port1 "50:5\$az:00:00:00:03 1\$az.0.0.3 100\$az::3"
 ${OVNNBCTL_CMD} lsp-add sw0\$az sw0\$az-port2
 ${OVNNBCTL_CMD} lsp-set-addresses sw0\$az-port2 "50:5\$az:00:00:00:04 1\$az.0.0.4 100\$az::4"
-
-# Create ports in sw0\$az that will use dhcp from ovn
-${OVNNBCTL_CMD} lsp-add sw0\$az sw0\$az-port3
-${OVNNBCTL_CMD} lsp-set-addresses sw0\$az-port3 "50:5\$az:00:00:00:05 dynamic"
-${OVNNBCTL_CMD} lsp-set-dhcpv4-options sw0\$az-port3 \$CIDR_UUID
-${OVNNBCTL_CMD} lsp-add sw0\$az sw0\$az-port4
-${OVNNBCTL_CMD} lsp-set-addresses sw0\$az-port4 "50:5\$az:00:00:00:06 dynamic"
-${OVNNBCTL_CMD} lsp-set-dhcpv4-options sw0\$az-port4 \$CIDR_UUID
 
 # Create the second logical switch with one port
 ${OVNNBCTL_CMD} ls-add sw1\$az
@@ -938,17 +918,11 @@ create_fake_vm() {
     ip netns exec \$name ip link set lo up
     [ -n "\$mac" ] && ip netns exec \$name ip link set \$name address \$mac
     ip netns exec \$name ip link set \$name mtu \$mtu
-    if [ "\$ip" == "dhcp" ]; then
-      ip netns exec \$name ip link set \$name up
-      #ip netns exec \$name dhclient -sf /bin/fullstack-dhclient-script --no-pid -1 -v --timeout 10 \$name
-      ip netns exec \$name dhclient -sf /bin/fullstack-dhclient-script --no-pid -nw \$name
-    else
-      ip netns exec \$name ip addr add \$ip/\$mask dev \$name
-      ip netns exec \$name ip addr add \$ipv6_addr dev \$name "nodad"
-      ip netns exec \$name ip link set \$name up
-      ip netns exec \$name ip route add default via \$gw dev \$name
-      ip netns exec \$name ip -6 route add default via \$ipv6_gw dev \$name
-    fi
+    ip netns exec \$name ip addr add \$ip/\$mask dev \$name
+    ip netns exec \$name ip addr add \$ipv6_addr dev \$name "nodad"
+    ip netns exec \$name ip link set \$name up
+    ip netns exec \$name ip route add default via \$gw dev \$name
+    ip netns exec \$name ip -6 route add default via \$ipv6_gw dev \$name
 }
 
 create_fake_vm \$@
@@ -960,11 +934,6 @@ EOF
     ${RUNC_CMD} exec "${CHASSIS_NAMES[$((az-1))]}" bash /data/create_fake_vm.sh sw0$az-port1 sw0${az}p1 50:5$az:00:00:00:03 1400 1$az.0.0.3 24 1$az.0.0.1 100$az::3/64 100$az::a
     echo "Creating a fake VM in "${CHASSIS_NAMES[$((az+CENTRAL_COUNT-1))]}" for logical port - sw1$az-port1"
     ${RUNC_CMD} exec "${CHASSIS_NAMES[$((az+CENTRAL_COUNT-1))]}" bash /data/create_fake_vm.sh sw1$az-port1 sw1${az}p1 40:5$az:00:00:00:03 1400 2$az.0.0.3 24 2$az.0.0.1 200$az::3/64 200$az::a
-
-    echo "Creating a fake VM in "${CHASSIS_NAMES[$((az-1))]}" for logical port - sw0$az-port3 (using dhcp)"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[$((az-1))]}" bash /data/create_fake_vm.sh sw0$az-port3 sw0${az}p3 50:5$az:00:00:00:05 1400 dhcp
-    echo "Creating a fake VM in "${CHASSIS_NAMES[$((az+CENTRAL_COUNT-1))]}" for logical port - sw0$az-port4 (using dhcp)"
-    ${RUNC_CMD} exec "${CHASSIS_NAMES[$((az+CENTRAL_COUNT-1))]}" bash /data/create_fake_vm.sh sw0$az-port4 sw0${az}p4 50:5$az:00:00:00:06 1400 dhcp
 
     echo "Creating a fake VM in the host bridge ${OVN_EXT_BR}"
     ip netns add ovnfake-ext$az

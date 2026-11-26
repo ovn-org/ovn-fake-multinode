@@ -18,7 +18,6 @@ ENV TERM=xterm
 VOLUME ["/run", "/tmp"]
 
 STOPSIGNAL SIGRTMIN+3
-COPY image/cinc/generate_dhclient_script_for_fullstack.sh /tmp/generate_dhclient_script_for_fullstack.sh
 
 COPY image/cinc/install_"$OS_BASE"_pkg.sh /install_pkg.sh
 RUN /install_pkg.sh $OS_IMAGE
