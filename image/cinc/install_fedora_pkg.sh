@@ -40,7 +40,7 @@ dnf install -y --skip-broken \
   lksctp-tools-devel \
   make \
   meson \
-  net-tools.x86_64 \
+  net-tools \
   ninja-build \
   nmap \
   openssh-clients \
@@ -57,6 +57,6 @@ dnf install -y --skip-broken \
   python3-pyroute2 \
   tcpdump \
   unbound-devel \
-  uuid.x86_64 \
+  uuid \
   which  \
   initscripts
