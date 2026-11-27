@@ -20,7 +20,6 @@ dnf install -y --skip-broken \
   autoconf \
   automake \
   conntrack-tools \
-  dhcp-client \
   dnf-utils \
   file \
   fping \
@@ -41,7 +40,7 @@ dnf install -y --skip-broken \
   lksctp-tools-devel \
   make \
   meson \
-  net-tools.x86_64 \
+  net-tools \
   ninja-build \
   nmap \
   openssh-clients \
@@ -58,13 +57,6 @@ dnf install -y --skip-broken \
   python3-pyroute2 \
   tcpdump \
   unbound-devel \
-  uuid.x86_64 \
+  uuid \
   which  \
   initscripts
-
-# Generate variation of dhclient-script that we can use for fake vm namespaces.
-# dhclient-script might not be available though, so don't fail if that's
-# the case.
-mkdir -pv /bin
-/tmp/generate_dhclient_script_for_fullstack.sh / || \
-    echo "Failed to generate dhclient script for fullstack!"

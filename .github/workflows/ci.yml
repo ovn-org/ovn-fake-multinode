@@ -23,8 +23,6 @@ jobs:
       RUNC_CMD: podman
       OVN_SRC_PATH: ovn_git
       OVS_SRC_PATH: ovn_git/ovs
-      # https://github.com/actions/runner-images/issues/6282
-      XDG_RUNTIME_DIR: ''
       OS_IMAGE: ${{ matrix.image.url }}
       OS_BASE: ${{ matrix.image.base }}
       CENTRAL_IC_ID: ovn-central-az1
@@ -44,11 +42,15 @@ jobs:
           sudo apt update
           sudo apt install openvswitch-switch
           podman --version
+      - name: Preserve env
+        run: |
+          . .ci/util.sh
+          sudo_preserve_env
       - name: Build images
-        run: sudo -E ./ovn_cluster.sh build
+        run: sudo ./ovn_cluster.sh build
       - name: Start basic cluster
-        run: sudo -E ./ovn_cluster.sh start
+        run: sudo ./ovn_cluster.sh start
       - name: Run basic test script
         run: sudo ./.ci/test_basic.sh
       - name: Stop cluster
-        run: sudo -E ./ovn_cluster.sh stop
+        run: sudo ./ovn_cluster.sh stop
